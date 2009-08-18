@@ -1,0 +1,134 @@
+== cornea ==
+
+Digital asset storage and service over HTTP.
+
+Each asset will have a serviceId and a assetId identifier.
+
+Each asset has multiple possible representations.
+
+An asset to serve or store is uniquely identified by the combination of
+(serviceId,assetId,rep)
+
+For example, a picture of a person for a profile could be store in the
+"profile pictures" serviceId = 17. Bob's profile id picture could be
+assetId = 314.  Each profile picture needs an original size (rep = 0),
+and 3 derivative sizes (rep 1: 500x500, rep 2: 150x150, rep 3: 64x64).
+
+So, four serviceable assets exist: (17,314,0) (17,314,1) (17,314,2) (17,314,3)
+
+The storage system itself knows nothing of the different representations.
+It does not know that the asset being stored is a jpeg or a mpeg file.  It
+also has no idea what 500x500 really means.
+
+When assets are stored in the system, each is stored independently.
+
+== Terms ==
+
+RecallTable: database that tracks where assets live.
+StorageNode: a box of disks.
+  A StorageNode has the following states:
+    open: online and accepting uploads (has available storage)
+    closed: online and not accepting uploads (out of space)
+    offline: unavailable
+    decommissioned: unavailable never to return to service
+
+== Upload ==
+
+An asset is uploaded.  Along with an asset, the serviceId, assetId and rep
+are provided. (think of them as a path name)
+
+STORE(input,serviceId,assetId,rep):
+
+  // Gets number of open nodes specified for serviceId,rep
+  repinfo = r.repInfo(serviceId,rep)
+  N = r.getOpenNodes()
+
+  // get it onto one of the nodes
+  S = ()
+  for N as n 
+    if n.PUT(input,serviceId,assetId,rep)
+      // note we stored, remove it from destinations and make it gold
+      S.push(n)
+      N.remove(n)
+      gold = n
+      break
+    else
+      N.remove(n)
+
+  if |S| == 0 return failure
+
+  // distancedNodes takes N and removes elements that are "too close" to those in S.
+  // "too close" will be defined in repinfo.
+  // Use the DC/Cage/Row/Rack/PDU concept.
+  while |S| < repinfo.replicationCount
+    T = repinfo.distancedNodes(N,S)
+    if |T| == 0 break // can't find adequate nodes
+    for T as n
+      if n.PUT(gold,serviceId,assetId,rep)
+        S.push(n)
+        N.remove(n)
+        break
+      else
+        T.remove(n)
+    if |T| == 0 break // can't find adequate working nodes
+
+  if |S| < repinfo.replicationCount        // not safe enough
+     or                                    // or
+     not r.insert(serviceId,assetId,rep,S) // cannot record locations
+    for S as n
+      n.DELETE(serviceId,assetId,rep) // no error checking
+    return failure
+  if |repinfo.dependents|
+    if not q.enqueue(serviceId,assetId,rep)
+      for S as n
+        n.DELETE(serviceId,assetId,rep) // no error checking
+      return failure
+
+  return success
+
+
+WORKER:
+
+  while (serviceId,assetId,repIn) = q.dequeue()
+    repinfo = r.repInfo(serviceId,repIn)
+    if |repinfo.dependents| == 0 continue // should never happen
+    N = r.find(serviceId,assetId,repIn)
+    for N as n
+      if input = n.FETCH(serviceId,assetId,repIn)
+        break
+    if not input log error and continue
+
+    for repinfo.dependents as repOut
+      output = transform(serviceId,input,repIn,repOut)
+      if not output log error and continue
+      STORE(output,serviceId,assetId,repOut)
+
+MAINTENANCE:
+
+  when decommissioned... find all images with that node in its set
+  copy those to a new random open node and replace the row in RecallTable
+
+
+
+= Project Task List =
+
+Configuration includes:
+ * list of metadata nodes.
+
+Storage node "setup".  This includes minimal OS install and base setup of software.
+ * OpenSolaris
+ * Apache 2.2
+ * PostgreSQL libs
+ * memcached
+ * erlang / RabbitMQ
+ * self assessment kit (health/heartbeat to metadata nodes)
+ * scrubber
+  * disk scrubbing
+
+Metadata node "setup". This includes a minimal PostgreSQL install w/ pgBouncer.
+ * PostgreSQL 8.3+
+  * schema RecallTable (parent)
+           RecallTable_{hostid} child.
+ * pgBouncer
+
+Processing node "setup".  This is more freeform.  Use Gearman?
