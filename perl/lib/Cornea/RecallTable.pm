@@ -8,9 +8,9 @@ sub new {
   $class = ref($class) ? ref $class : $class;
 
   my $config = Cornea::Config->new();
-  my $dbh = DBI->connect($config->dsn(),
-                         $config->dbuser(),
-                         $config->dbpass(),
+  my $dbh = DBI->connect($config->get("DB::dsn"),
+                         $config->get("DB::user"),
+                         $config->get("DB::pass"),
                          { PrintError => 0, RaiseError => 1 },
                         );
 

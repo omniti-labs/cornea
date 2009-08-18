@@ -1,14 +1,12 @@
 package Cornea;
 
 use strict;
-use Switch;
+use Cornea::Config;
 use Cornea::RepresentationInfo;
 use Cornea::RecallTable;
 use Cornea::Queue;
 use Cornea::StorageNode;
 use Cornea::StorageNodeList;
-
-our $MUST_BE_COMPLETE = 0;
 
 sub new {
   my $class = shift;
@@ -60,7 +58,8 @@ sub store {
   }
 
   if ($S->count < $repinfo->replicationCount) {
-    if($MUST_BE_COMPLETE) {
+    my $config = Cornea::Config->new();
+    if($config->must_be_complete()) {
       foreach my $n ($S->items) { $n->delete($serviceId, $assetId, $repId); }
       die "Failed to reach required replication count";
     }
@@ -189,16 +188,20 @@ sub replicate {
   }
 }
 
+
 sub worker {
   my $self = shift;
+  my $queue = Cornea::Queue->new();
 
-  while(my ($op, $detail) = Cornea::Queue::dequeue()) {
-    switch($op) {
-      case "PROCESS"     { $self->process($detail); }
-      case "REPLICATE"   { $self->replicate($detail); }
-      else               { $self->log("UNKNOWNE Queue op($op)\n"); }
+  $queue->worker(
+    sub {
+      my $op = shift;
+      my $detail = shift;
+      if    ($op eq 'PROCESS')    { $self->process($detail); }
+      elsif ($op eq 'REPLICATE')  { $self->replicate($detail); }
+      else                        { $self->log("UNKNOWNE Queue op($op)\n"); }
     }
-  }
+  );
 }
 
 1;
