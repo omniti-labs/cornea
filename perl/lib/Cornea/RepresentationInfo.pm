@@ -53,4 +53,14 @@ sub transform {
   return $t->transform($serviceId, $input, $repInId, $repOutId);
 }
 
+sub validate {
+  my $self = shift;
+  my ($serviceId, $input) = @_;
+  my $cls = $self->transformClass;
+  eval "use $cls;";
+  die $@ if($@);
+  my $t = eval "$cls->new();";
+  return $t->validate($serviceId, $input);
+}
+
 1;

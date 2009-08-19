@@ -14,6 +14,17 @@ sub new {
   bless {}, $class;
 }
 
+sub submit {
+  my $self = shift;
+  my $input = shift;
+  my ($serviceId,$assetId) = @_;
+
+  my $rt = Cornea::RecallTable->new();
+  my $repinfo = $rt->repInfo($serviceId, 0);
+  $repinfo->validate($serviceId, $input);
+  return $self->store($input, $serviceId, $assetId, 0);
+}
+
 sub store {
   my $self = shift;
   my $input = shift;
