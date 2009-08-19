@@ -119,7 +119,7 @@ sub repInfoDependents {
   my ($serviceId, $repId) = @_;
   my $tried = 0;
   my @deps;
-
+ again:
   eval {
     @deps = ();
     my $sth = $self->{dbh}->prepare("select * from getRepInfoDependents(?,?)");
