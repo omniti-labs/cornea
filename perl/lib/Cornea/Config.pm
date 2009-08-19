@@ -51,7 +51,12 @@ sub read_config {
     open(CONF, "<$file") || die "Could not read config file: $file";
     while(<CONF>) {
         next if /^\s*[;#]/;
-        if(/^\s*([^\s=]+)\s*=\s*(.*)$/) {
+        if(/^\s*([^\s=]+)\s*=\s*\[(.*)\]\s*$/) {
+          my $key = lc($1);
+          (my $val = $2) =~ s/\s+$//;
+          _g_Config($key, [split /\s+/, $val]);
+        }
+        elsif(/^\s*([^\s=]+)\s*=\s*(.*)$/) {
           my $key = lc($1);
           (my $val = $2) =~ s/\s+$//;
           _g_Config($key, $val);
@@ -61,7 +66,8 @@ sub read_config {
     _g_Config('config_file', $file);
 }
 
-sub get { _g_Config(lc($_[1])); }
+sub get { my $v = _g_Config(lc($_[1])); return (ref $v eq 'ARRAY') ? $v->[0] : $v; }
+sub get_list { my $v = _g_Config(lc($_[1])); return (ref $v eq 'ARRAY') ? $v : [$v]; }
 sub set { _g_Config(lc($_[1]), $_[2]); }
 sub unset { _g_Config_unset(lc($_[1])); }
 sub isset { _g_Config_isset(lc($_[1])); }

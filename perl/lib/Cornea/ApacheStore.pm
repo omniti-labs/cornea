@@ -17,7 +17,7 @@ sub path {
   my $self = shift;
   my ($serviceId, $assetId, $repId) = @_;
   my $config = Cornea::Config->new();
-  my $base = $config->get("Basepath");
+  my $base = $config->get("Storage::path");
   $assetId = "$assetId"; # Treat it as a string.
   if($assetId =~ /^\d+$/ and length $assetId < 4) {
     # pad it back with zeros so we can has it successfully

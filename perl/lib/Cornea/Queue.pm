@@ -11,10 +11,22 @@ sub __reconnect {
     eval { $self->{stomp}->disconnect(); };
     delete $self->{stomp};
   }
-  my $stomp = Net::Stomp->new( { hostname => $config->get("MQ::hostname"),
-                                 port => $config->get("MQ::port") });
-  foreach (@{$self->{queues}}) {
-    $stomp->subscribe( { destination => $_, ack => 'client' } );
+  my $stomphosts = $config->get_list("MQ::hostname");
+  foreach my $hostname ( @$stomphosts ) {
+    eval {
+      my $stomp = Net::Stomp->new( { hostname => $hostame,
+                                     port => $config->get("MQ::port") });
+      $stomp->connect( { login => $config->get("MQ::login"),
+                         passcode => $config->get("MQ::passcode") } ) || 
+        die "could not connect to stomp on $hostname\n";
+    };
+    last unless $@;
+    $stomp = undef;
+  }
+  if($stomp) {
+    foreach (@{$self->{queues}}) {
+      $stomp->subscribe( { destination => $_, ack => 'client' } );
+    }
   }
   $self->{stomp} = $stomp;
 }
