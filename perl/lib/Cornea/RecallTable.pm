@@ -12,7 +12,7 @@ sub __connect {
   Cornea::Utils::shuffle($dsns);
   foreach my $dsn (@$dsns) {
     eval {
-      $dbh = DBI->connect($config->get("DB::dsn"),
+      $dbh = DBI->connect($dsn,
                           $config->get("DB::user"),
                           $config->get("DB::pass"),
                           { PrintError => 0, RaiseError => 1 },
