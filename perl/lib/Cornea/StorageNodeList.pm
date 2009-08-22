@@ -15,13 +15,13 @@ sub items {
 sub remove {
   my $self = shift;
   my $node = shift;
-  delete $self->{$node->name()};
+  delete $self->{$node->fqdn()};
 }
 
 sub add {
   my $self = shift;
   my $node = shift;
-  $self->{$node->name()} = $node;
+  $self->{$node->fqdn()} = $node;
 }
 
 sub count {

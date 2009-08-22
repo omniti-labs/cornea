@@ -1,8 +1,8 @@
 package Cornea::Config;
 use strict;
-
-use strict;
+use YAML;
 use POSIX qw/uname/;
+use Carp;
 
 sub default_config_file { '/etc/cornea${host}.conf' }
 
@@ -13,8 +13,8 @@ sub default_config_file { '/etc/cornea${host}.conf' }
     $_g_Config{$key} = shift if @_;
     $_g_Config{$key};
   }
-  sub _g_Config_unset { delete $_g_Config{shift}; }
-  sub _g_Config_isset { exists $_g_Config{shift}; }
+  sub _g_Config_unset { my $key = shift; delete $_g_Config{$key}; }
+  sub _g_Config_isset { my $key = shift; exists $_g_Config{$key}; }
 }
 
 sub new {
@@ -48,10 +48,10 @@ sub _init {
 
 sub read_config {
     my ($class, $file) = @_;
-    open(CONF, "<$file") || die "Could not read config file: $file";
+    open(CONF, "<$file") || confess "Could not read config file: $file";
     while(<CONF>) {
         next if /^\s*[;#]/;
-        if(/^\s*([^\s=]+)\s*=\s*\[(.*)\]\s*$/) {
+        if(/^\s*([^\s=]+)\s*=\s*\[\s*(.*)\]\s*$/) {
           my $key = lc($1);
           (my $val = $2) =~ s/\s+$//;
           _g_Config($key, [split /\s+/, $val]);

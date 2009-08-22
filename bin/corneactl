@@ -1,0 +1,46 @@
+#!/usr/bin/perl
+use strict;
+
+# TODO fix the lib path to be better (or install)
+use lib 'perl/lib';
+use Cornea;
+use Cornea::RecallTable;
+use Cornea::Utils;
+use Getopt::Long;
+use YAML;
+use Carp;
+use Cornea::Config;
+use Switch;
+
+my $conf_file;
+GetOptions("c=s" => \$conf_file);
+my $conf = Cornea::Config->new($conf_file);
+
+my $cmd = shift;
+switch($cmd) {
+  case 'list-nodes' {
+    my $rt = Cornea::RecallTable->new();
+    print Dump($rt->getNodes());
+  }
+  case 'update-node' {
+    my $fqdn = shift;
+    my $location = shift;
+    my $rt = Cornea::RecallTable->new();
+    my ($total, $used) = Cornea::Utils::fsinfo($conf->get('Storage::base')."/.");
+    my $min = $conf->get('Storage::minimum');
+    $min = ($1*Cornea::Utils::units($2))/1024
+      if ($min =~ /^(\d+)\s*([GBKMT])/i);
+    my $state = (($total - $used) < $min) ? 'closed' : 'open';
+    $rt->updateNode($fqdn, { state => $state,
+                             total_storage => $total,
+                             used_storage => $used,
+                             location => $location,
+                           } );
+  }
+  else {
+    usage();
+    exit();
+  }
+}
+
+1;

@@ -7,15 +7,19 @@ use Net::Stomp;
 sub __reconnect {
   my $self = shift;
   my $config = Cornea::Config->new();
+  my $stomp;
+
   if($self->{stomp}) {
     eval { $self->{stomp}->disconnect(); };
     delete $self->{stomp};
   }
   my $stomphosts = $config->get_list("MQ::hostname");
-  foreach my $hostname ( @$stomphosts ) {
+  foreach my $location ( @$stomphosts ) {
+    my ($hostname, $port) = split /:/, $location;
+    $port ||= 61613;
     eval {
-      my $stomp = Net::Stomp->new( { hostname => $hostame,
-                                     port => $config->get("MQ::port") });
+      $stomp = Net::Stomp->new( { hostname => $hostname,
+                                     port => $port });
       $stomp->connect( { login => $config->get("MQ::login"),
                          passcode => $config->get("MQ::passcode") } ) || 
         die "could not connect to stomp on $hostname\n";

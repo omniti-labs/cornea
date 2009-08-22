@@ -8,6 +8,7 @@ sub __connect {
   my $self = shift;
   my $config = Cornea::Config->new();
   my $dbh;
+  my $failed_err = undef;
   my $dsns = $config->get_list("DB::dsn");
   Cornea::Utils::shuffle($dsns);
   foreach my $dsn (@$dsns) {
@@ -18,9 +19,11 @@ sub __connect {
                           { PrintError => 0, RaiseError => 1 },
                          );
     };
-    last unless ($@);
+    die "$dsn: $@\n" if $@;
+    last unless $@;
   }
-  $self->{dbh} = shift;
+  print STDERR "$failed_err\n" if $failed_err;
+  $self->{dbh} = $dbh;
 }
 sub __reconnect {
   my $self = shift;
@@ -31,6 +34,7 @@ sub new {
   my $class = shift;
   my $self = bless { }, $class;
   $self->__connect;
+  $self;
 }
 
 sub insert {
@@ -45,7 +49,7 @@ sub insert {
     $sth->finish();
   };
   if ($@) {
-    unless ($tried++) { $self->{dbh}->__reconnect();  goto again; }
+    unless ($tried++) { $self->__reconnect();  goto again; }
     die $@ if $@;
   }
   return 1;
@@ -67,7 +71,7 @@ sub find {
     $sth->finish();
   };
   if ($@) {
-    unless ($tried++) { $self->{dbh}->__reconnect();  goto again; }
+    unless ($tried++) { $self->__reconnect();  goto again; }
     die $@ if $@;
   }
   return $C;
@@ -89,10 +93,41 @@ sub getNodes {
     $sth->finish();
   };
   if ($@) {
-    unless ($tried++) { $self->{dbh}->__reconnect();  goto again; }
+    unless ($tried++) { $self->__reconnect();  goto again; }
     die $@ if $@;
   }
   return $snl;
+}
+
+sub updateNode {
+  my $self = shift;
+  my $fqdn = shift;
+  my $attr = shift;
+  die "bad state"
+    unless $attr->{state} =~ /^(?:open|closed|offline|decommissioned)$/;
+  die "storage must be a number"
+    unless $attr->{total_storage} =~ /^[1-9]\d*$/ and
+           $attr->{used_storage} =~ /^[1-9]\d*$/;
+  die "locaion must be dc/cage/row/rack/pdu"
+    unless !defined($attr->{location}) or
+           $attr->{location} =~ /^[^\/]+(?:\/[^\/]+){4}$/;
+
+  my $tried = 0;
+ again:
+  eval {
+    my $sth = $self->{dbh}->prepare("select storeCorneaNode(?,?,?,?,?)");
+    $sth->execute($attr->{state},
+                  $attr->{total_storage}, $attr->{used_storage},
+                  $attr->{location}, $fqdn);
+    $sth->finish();
+  };
+  if ($@) {
+    die "location must be specified for first-time update\n"
+      if $@ =~ /null value in column "location"/;
+    unless ($tried++) { $self->__reconnect();  goto again; }
+    die $@ if $@;
+  }
+  return 0;
 }
 
 sub repInfo {
@@ -108,7 +143,7 @@ sub repInfo {
     $sth->finish();
   };
   if ($@) {
-    unless ($tried++) { $self->{dbh}->__reconnect();  goto again; }
+    unless ($tried++) { $self->__reconnect();  goto again; }
     die $@ if $@;
   }
   return Cornea::RepresentationInfo->new_from_row($row);
@@ -130,7 +165,7 @@ sub repInfoDependents {
     $sth->finish();
   };
   if ($@) {
-    unless ($tried++) { $self->{dbh}->__reconnect();  goto again; }
+    unless ($tried++) { $self->__reconnect();  goto again; }
     die $@ if $@;
   }
   return @deps;
