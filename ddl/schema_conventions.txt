@@ -1,0 +1,32 @@
+Cornea Database Schema Conventions
+----------------------------------
+
+Ownership
+---------
+All schema should be owned by the cornea role. 
+
+
+Object Layout
+-------------
+
+All objects specifc to cornea should go in the cornea schema.
+We should be able to reproduce the cornea schema using pg_dump -N cornea
+Other sql/schema dependencies will go in thier own schema. 
+
+
+Object Naming
+-------------
+
+Object names should be named in the singular.
+Primary Key names should be named table_id.
+Column names should use underscores for clarity.
+
+Function Naming
+---------------
+
+get_ will be used to define functions that select data.
+kill_ will be used to define functions that delete data.
+make_ will be used to define functions that insert data.
+set_ will be used to define functions that update data.
+test_ will be used to define functions that test results.
+make_ will be used to define functions that generate SQL code.
