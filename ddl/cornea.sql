@@ -3,215 +3,173 @@
 --
 
 SET statement_timeout = 0;
-SET client_encoding = 'UTF8';
+SET client_encoding = 'SQL_ASCII';
 SET standard_conforming_strings = off;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET escape_string_warning = off;
 
 --
--- Name: cornea; Type: SCHEMA; Schema: -; Owner: postgres
+-- Name: cornea; Type: SCHEMA; Schema: -; Owner: cornea
 --
 
 CREATE SCHEMA cornea;
 
 
-ALTER SCHEMA cornea OWNER TO postgres;
-
---
--- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: postgres
---
-
-CREATE PROCEDURAL LANGUAGE plpgsql;
-
-
-ALTER PROCEDURAL LANGUAGE plpgsql OWNER TO postgres;
+ALTER SCHEMA cornea OWNER TO cornea;
 
 SET search_path = cornea, pg_catalog;
 
 --
--- Name: findasset(integer, bigint, integer); Type: FUNCTION; Schema: cornea; Owner: postgres
+-- Name: get_asset_location(integer, bigint, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE FUNCTION findasset(in_serviceid integer, in_assetid bigint, in_repid integer) RETURNS integer[]
-    LANGUAGE plpgsql
+CREATE FUNCTION get_asset_location(in_serviceid integer, in_assetid bigint, in_repid integer) RETURNS integer[]
+    LANGUAGE sql STABLE
     AS $$
-declare
-v_out int[];
-begin
-  select storagelocation into v_out from cornea.assetlocations
-    where serviceid=in_serviceid and assetid=in_assetid and repid=in_repid;
-   return v_out;
-end
+  	select storage_location from asset where service_id=in_serviceid and asset_id=in_assetid and representation_id=in_repid;
 $$;
 
 
-ALTER FUNCTION cornea.findasset(in_serviceid integer, in_assetid bigint, in_repid integer) OWNER TO postgres;
+ALTER FUNCTION cornea.get_asset_location(in_serviceid integer, in_assetid bigint, in_repid integer) OWNER TO cornea;
 
 SET default_tablespace = '';
 
 SET default_with_oids = false;
 
 --
--- Name: storagenodes; Type: TABLE; Schema: cornea; Owner: postgres; Tablespace: 
+-- Name: representation; Type: TABLE; Schema: cornea; Owner: cornea; Tablespace: 
 --
 
-CREATE TABLE storagenodes (
-    storagenodeid smallint NOT NULL,
+CREATE TABLE representation (
+    representation_id smallint NOT NULL,
+    service_id smallint NOT NULL,
+    representation_name text NOT NULL,
+    distance integer NOT NULL,
+    representation_count integer NOT NULL,
+    by_product_of integer NOT NULL,
+    transform_class text NOT NULL
+);
+
+
+ALTER TABLE cornea.representation OWNER TO cornea;
+
+--
+-- Name: get_representation(integer, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
+--
+
+CREATE FUNCTION get_representation(in_service_id integer, in_repid integer) RETURNS SETOF representation
+    LANGUAGE sql STABLE
+    AS $$
+  	select * from representations where service_id = in_service_id and repid = in_repid;
+$$;
+
+
+ALTER FUNCTION cornea.get_representation(in_service_id integer, in_repid integer) OWNER TO cornea;
+
+--
+-- Name: get_representation_dependents(integer, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
+--
+
+CREATE FUNCTION get_representation_dependents(in_service_id integer, in_repid integer) RETURNS SETOF representation
+    LANGUAGE sql STABLE
+    AS $$
+	select * from representations where service_id = in_service_id and byproduct_of = in_repid;
+$$;
+
+
+ALTER FUNCTION cornea.get_representation_dependents(in_service_id integer, in_repid integer) OWNER TO cornea;
+
+--
+-- Name: storage_node; Type: TABLE; Schema: cornea; Owner: cornea; Tablespace: 
+--
+
+CREATE TABLE storage_node (
+    storage_node_id integer NOT NULL,
     state text NOT NULL,
-    total_storage bigint not null,
-    used_storage bigint not null,
-    fqdn text not null,
-    location text not null,
-    lastupdatetime timestamp with time zone DEFAULT now(),
-    CONSTRAINT check_storagestate CHECK ((state = ANY (ARRAY['open'::text, 'closed'::text, 'offline'::text, 'decommissioned'::text])))
+    total_storage bigint NOT NULL,
+    used_storage bigint NOT NULL,
+    fqdn text NOT NULL,
+    location text NOT NULL,
+    modified_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT check_storage_state CHECK ((state = ANY (ARRAY['open'::text, 'closed'::text, 'offline'::text, 'decommissioned'::text])))
 );
 
 
-ALTER TABLE cornea.storagenodes OWNER TO postgres;
+ALTER TABLE cornea.storage_node OWNER TO cornea;
 
 --
--- Name: getcorneanodes(text); Type: FUNCTION; Schema: cornea; Owner: postgres
+-- Name: get_storage_nodes_by_state(text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE FUNCTION getcorneanodes(in_state text) RETURNS SETOF storagenodes
-    LANGUAGE plpgsql
+CREATE FUNCTION get_storage_nodes_by_state(in_state text) RETURNS SETOF storage_node
+    LANGUAGE sql STABLE
     AS $$
-declare
-v_rec cornea.storagenodes%rowtype;
-begin
-  for v_rec in select * from cornea.storagenodes
-    where state=in_state or in_state is null
-loop
-   return next v_rec;
- end loop;
-end
+  	select * from storage_node where state=in_state or in_state is null;
 $$;
 
 
-ALTER FUNCTION cornea.getcorneanodes(in_state text) OWNER TO postgres;
+ALTER FUNCTION cornea.get_storage_nodes_by_state(in_state text) OWNER TO cornea;
 
 --
--- Name: representations; Type: TABLE; Schema: cornea; Owner: postgres; Tablespace: 
+-- Name: make_asset(integer, bigint, integer, integer[]); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE TABLE representations (
-    repid smallint,
-    serviceid smallint,
-    repname text,
-    distance integer,
-    repcount integer,
-    byproductof integer,
-    transformclass text
-);
-
-
-ALTER TABLE cornea.representations OWNER TO postgres;
-
---
--- Name: getrepinfo(integer, integer); Type: FUNCTION; Schema: cornea; Owner: postgres
---
-
-CREATE FUNCTION getrepinfo(in_serviceid integer, in_repid integer) RETURNS SETOF representations
-    LANGUAGE plpgsql
+CREATE FUNCTION make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location integer[]) RETURNS void
+    LANGUAGE sql
     AS $$
-declare
-v_rec cornea.representations%rowtype;
-begin
-  for v_rec in select * from cornea.representations
-    where serviceid= in_serviceid  and repid= in_repid
-loop
-   return next v_rec;
- end loop;
-end
+  insert into asset(service_id,asset_id,representation_id,storage_location) 
+      values ( in_service_id, in_asset_id , in_repid ,in_storage_location);
 $$;
 
 
-ALTER FUNCTION cornea.getrepinfo(in_serviceid integer, in_repid integer) OWNER TO postgres;
+ALTER FUNCTION cornea.make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location integer[]) OWNER TO cornea;
 
 --
--- Name: getrepinfodependents(integer, integer); Type: FUNCTION; Schema: cornea; Owner: postgres
+-- Name: make_storage_node(text, bigint, bigint, text, text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE FUNCTION getrepinfodependents(in_serviceid integer, in_repid integer) RETURNS SETOF representations
+CREATE FUNCTION make_storage_node(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text) RETURNS void
     LANGUAGE plpgsql
     AS $$
-declare
-v_rec cornea.representations%rowtype;
-begin
-  for v_rec in select * from cornea.representations
-    where serviceid =in_serviceid and byproductof = in_repid
-loop
-   return next v_rec;
- end loop;
-end
-$$;
-
-
-ALTER FUNCTION cornea.getrepinfodependents(in_serviceid integer, in_repid integer) OWNER TO postgres;
-
---
--- Name: storeasset(integer, bigint, integer, integer[]); Type: FUNCTION; Schema: cornea; Owner: postgres
---
-
-CREATE FUNCTION storeasset(in_serviceid integer, in_assetid bigint, in_repid integer, in_storagelocation integer[]) RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-begin
-  insert into cornea. assetlocations(serviceid,assetid,repid,storagelocation) 
-                    values ( in_serviceid, in_assetid , in_repid ,in_storagelocation);
-end
-$$;
-
-
-ALTER FUNCTION cornea.storeasset(in_serviceid integer, in_assetid bigint, in_repid integer, in_storagelocation integer[]) OWNER TO postgres;
-
---
--- Name: storecorneanode(text, bigint, bigint, text, text); Type: FUNCTION; Schema: cornea; Owner: postgres
---
-
-CREATE FUNCTION storecorneanode(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text) RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-declare
-v_storagenodeid int;
-begin
-SELECT storagenodeid FROM cornea.storagenodes  WHERE fqdn=in_fqdn
-          INTO v_storagenodeid;
- IF NOT FOUND THEN
-           insert into  cornea.storagenodes (storagenodeid, state, total_storage , used_storage ,fqdn, location) values 
-                                        (nextval('seq_storagenodeid'), in_state, in_total_storage, in_used_storage, in_fqdn, in_location);   
+DECLARE
+	v_storage_node_id int;
+BEGIN
+    SELECT storage_node_id FROM storage_node WHERE fqdn=in_fqdn INTO v_storage_node_id;
+    IF NOT FOUND THEN
+       insert into storage_node (state, total_storage , used_storage ,fqdn, location) values 
+                                        (in_state, in_total_storage, in_used_storage, in_fqdn, in_location);   
     ELSE
-       update  cornea.storagenodes set state=in_state, total_storage=in_total_storage, used_storage=in_used_storage,
-                                       lastupdatetime = current_timestamp,
+       update storage_node set state=in_state, total_storage=in_total_storage, used_storage=in_used_storage,
+                                       modified_at = current_timestamp,
                                        location= ( CASE WHEN in_location IS NULL THEN location ELSE in_location END)
-       where storagenodeid = v_storagenodeid;
- END IF;
-end
+       where storage_node_id = v_storage_node_id;
+    END IF;
+END
 $$;
 
 
-ALTER FUNCTION cornea.storecorneanode(in_state text, in_total_storage bigint, in_used_storage bigint, in_fqdn text, in_location text) OWNER TO postgres;
+ALTER FUNCTION cornea.make_storage_node(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text) OWNER TO cornea;
 
 --
--- Name: assetlocations; Type: TABLE; Schema: cornea; Owner: postgres; Tablespace: 
+-- Name: asset; Type: TABLE; Schema: cornea; Owner: cornea; Tablespace: 
 --
 
-CREATE TABLE assetlocations (
-    assetid bigint NOT NULL,
-    serviceid smallint NOT NULL,
-    repid smallint NOT NULL,
-    storagelocation smallint[]
+CREATE TABLE asset (
+    asset_id bigint NOT NULL,
+    service_id smallint NOT NULL,
+    representation_id smallint NOT NULL,
+    storage_location smallint[]
 );
 
 
-ALTER TABLE cornea.assetlocations OWNER TO postgres;
+ALTER TABLE cornea.asset OWNER TO cornea;
 
 --
--- Name: seq_assetid; Type: SEQUENCE; Schema: cornea; Owner: postgres
+-- Name: asset_asset_id_seq; Type: SEQUENCE; Schema: cornea; Owner: cornea
 --
 
-CREATE SEQUENCE seq_assetid
+CREATE SEQUENCE asset_asset_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MAXVALUE
@@ -219,20 +177,20 @@ CREATE SEQUENCE seq_assetid
     CACHE 1;
 
 
-ALTER TABLE cornea.seq_assetid OWNER TO postgres;
+ALTER TABLE cornea.asset_asset_id_seq OWNER TO cornea;
 
 --
--- Name: seq_assetid; Type: SEQUENCE SET; Schema: cornea; Owner: postgres
+-- Name: asset_asset_id_seq; Type: SEQUENCE OWNED BY; Schema: cornea; Owner: cornea
 --
 
-SELECT pg_catalog.setval('seq_assetid', 1, false);
+ALTER SEQUENCE asset_asset_id_seq OWNED BY asset.asset_id;
 
 
 --
--- Name: seq_storagenodeid; Type: SEQUENCE; Schema: cornea; Owner: postgres
+-- Name: storage_node_storage_node_id_seq; Type: SEQUENCE; Schema: cornea; Owner: cornea
 --
 
-CREATE SEQUENCE seq_storagenodeid
+CREATE SEQUENCE storage_node_storage_node_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MAXVALUE
@@ -240,79 +198,59 @@ CREATE SEQUENCE seq_storagenodeid
     CACHE 1;
 
 
-ALTER TABLE cornea.seq_storagenodeid OWNER TO postgres;
+ALTER TABLE cornea.storage_node_storage_node_id_seq OWNER TO cornea;
 
 --
--- Name: seq_storagenodeid; Type: SEQUENCE SET; Schema: cornea; Owner: postgres
+-- Name: storage_node_storage_node_id_seq; Type: SEQUENCE OWNED BY; Schema: cornea; Owner: cornea
 --
 
-SELECT pg_catalog.setval('seq_storagenodeid', 1, false);
-
-
---
--- Data for Name: assetlocations; Type: TABLE DATA; Schema: cornea; Owner: postgres
---
-
-COPY assetlocations (assetid, serviceid, repid, storagelocation) FROM stdin;
-\.
+ALTER SEQUENCE storage_node_storage_node_id_seq OWNED BY storage_node.storage_node_id;
 
 
 --
--- Data for Name: representations; Type: TABLE DATA; Schema: cornea; Owner: postgres
+-- Name: asset_id; Type: DEFAULT; Schema: cornea; Owner: cornea
 --
 
-COPY representations (repid, serviceid, repname, distance, repcount, byproductof, transformclass) FROM stdin;
-\.
-
-
---
--- Data for Name: storagenodes; Type: TABLE DATA; Schema: cornea; Owner: postgres
---
-
-COPY storagenodes (storagenodeid, state, total_storage, used_storage, fqdn, location, lastupdatetime) FROM stdin;
-\.
+ALTER TABLE asset ALTER COLUMN asset_id SET DEFAULT nextval('asset_asset_id_seq'::regclass);
 
 
 --
--- Name: pk_tuples; Type: CONSTRAINT; Schema: cornea; Owner: postgres; Tablespace: 
+-- Name: storage_node_id; Type: DEFAULT; Schema: cornea; Owner: cornea
 --
 
-ALTER TABLE ONLY assetlocations
-    ADD CONSTRAINT pk_tuples PRIMARY KEY (serviceid, assetid, repid);
-
-
---
--- Name: representations_repid_key; Type: CONSTRAINT; Schema: cornea; Owner: postgres; Tablespace: 
---
-
-ALTER TABLE ONLY representations
-    ADD CONSTRAINT representations_repid_key UNIQUE (repid, serviceid);
+ALTER TABLE storage_node ALTER COLUMN storage_node_id SET DEFAULT nextval('storage_node_storage_node_id_seq'::regclass);
 
 
 --
--- Name: storagenodes_name_key; Type: CONSTRAINT; Schema: cornea; Owner: postgres; Tablespace: 
+-- Name: asset_pkey; Type: CONSTRAINT; Schema: cornea; Owner: cornea; Tablespace: 
 --
 
-ALTER TABLE ONLY storagenodes
-    ADD CONSTRAINT storagenodes_name_key UNIQUE (fqdn);
-
-
---
--- Name: storagenodes_pkey; Type: CONSTRAINT; Schema: cornea; Owner: postgres; Tablespace: 
---
-
-ALTER TABLE ONLY storagenodes
-    ADD CONSTRAINT storagenodes_pkey PRIMARY KEY (storagenodeid);
+ALTER TABLE ONLY asset
+    ADD CONSTRAINT asset_pkey PRIMARY KEY (service_id, asset_id, representation_id);
 
 
 --
--- Name: public; Type: ACL; Schema: -; Owner: postgres
+-- Name: representation_pkey; Type: CONSTRAINT; Schema: cornea; Owner: cornea; Tablespace: 
 --
 
-REVOKE ALL ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON SCHEMA public FROM postgres;
-GRANT ALL ON SCHEMA public TO postgres;
-GRANT ALL ON SCHEMA public TO PUBLIC;
+ALTER TABLE ONLY representation
+    ADD CONSTRAINT representation_pkey PRIMARY KEY (representation_id, service_id);
+
+
+--
+-- Name: storage_node_fqdn_uidx; Type: CONSTRAINT; Schema: cornea; Owner: cornea; Tablespace: 
+--
+
+ALTER TABLE ONLY storage_node
+    ADD CONSTRAINT storage_node_fqdn_uidx UNIQUE (fqdn);
+
+
+--
+-- Name: storage_node_pkey; Type: CONSTRAINT; Schema: cornea; Owner: cornea; Tablespace: 
+--
+
+ALTER TABLE ONLY storage_node
+    ADD CONSTRAINT storage_node_pkey PRIMARY KEY (storage_node_id);
 
 
 --
