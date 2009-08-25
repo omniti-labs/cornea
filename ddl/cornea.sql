@@ -92,6 +92,7 @@ CREATE TABLE storage_node (
     state text NOT NULL,
     total_storage bigint NOT NULL,
     used_storage bigint NOT NULL,
+    ip text NOT NULL, 
     fqdn text NOT NULL,
     location text NOT NULL,
     modified_at timestamp with time zone DEFAULT now(),
@@ -132,20 +133,21 @@ ALTER FUNCTION cornea.make_asset(in_service_id integer, in_asset_id bigint, in_r
 -- Name: make_storage_node(text, bigint, bigint, text, text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE FUNCTION set_storage_node(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text) RETURNS void
+CREATE OR REPLACE FUNCTION set_storage_node(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text, in_ip text) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE
-	v_storage_node_id storage_node%storage_node_id;
+	v_storage_node_id storage_node.storage_node_id%type;
 BEGIN
-    SELECT storage_node_id FROM storage_node WHERE fqdn=$5 INTO v_storage_node_id;
+    SELECT storage_node_id FROM storage_node WHERE ip=$6 INTO v_storage_node_id;
     IF NOT FOUND THEN
-       insert into storage_node (state, total_storage , used_storage ,fqdn, location) values 
-                                        ($1, $2, $3, $5, $4);   
+       insert into storage_node (state, total_storage, used_storage, fqdn, location, ip) values 
+                                        ($1, $2, $3, $5, $4, $6);   
     ELSE
-       update storage_node set state=$1, total_storage=$2, used_storage=$3,
-                                       modified_at = current_timestamp,
-                                       location= ( CASE WHEN $4 IS NULL THEN location ELSE $4 END)
+       update storage_node set state=$1, total_storage=$2, used_storage=$3, 
+                                       modified_at = current_timestamp, 
+                                       location= ( CASE WHEN $4 IS NULL THEN location ELSE $4 END),
+                                       fqdn= ( CASE WHEN $5 IS NULL THEN fqdn ELSE $4 END)
        where storage_node_id = v_storage_node_id;
     END IF;
 END
@@ -238,6 +240,14 @@ ALTER TABLE ONLY asset
 
 ALTER TABLE ONLY representation
     ADD CONSTRAINT representation_pkey PRIMARY KEY (representation_id, service_id);
+
+
+--
+-- Name: storage_node_fqdn_uidx; Type: CONSTRAINT; Schema: cornea; Owner: cornea; Tablespace: 
+--
+
+ALTER TABLE ONLY storage_node
+    ADD CONSTRAINT storage_node_ip_uidx UNIQUE (ip);
 
 
 --
