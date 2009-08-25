@@ -136,7 +136,7 @@ ALTER FUNCTION cornea.make_asset(in_service_id integer, in_asset_id bigint, in_r
 -- Name: make_storage_node(text, bigint, bigint, text, text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION set_storage_node(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text, in_ip text) RETURNS void
+CREATE OR REPLACE FUNCTION set_storage_node(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text, in_ip text, in_storage_node_id storage_node.storage_node_id%type) RETURNS storage_node.storage_node_id%type 
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -144,8 +144,11 @@ DECLARE
 BEGIN
     SELECT storage_node_id FROM storage_node WHERE ip=$6 INTO v_storage_node_id;
     IF NOT FOUND THEN
-       insert into storage_node (state, total_storage, used_storage, fqdn, location, ip) values 
-                                        ($1, $2, $3, $5, $4, $6);   
+       insert into storage_node (storage_node_id, state, total_storage, used_storage, fqdn, location, ip) 
+		values (coalesce($7,(select max(storage_node_id) +1 from storage_node)), $2, $3, $5, $4, $6)
+			returning storage_node_id INTO v_storage_node_id;   
+	-- used the passed in node id if we have one, otherwise we'll generate one ourselves 
+	-- we don't use a sequence here, because then we would have to synchronize sequences across all nodes
     ELSE
        update storage_node set state=$1, total_storage=$2, used_storage=$3, 
                                        modified_at = current_timestamp, 
@@ -153,6 +156,9 @@ BEGIN
                                        fqdn= ( CASE WHEN $5 IS NULL THEN fqdn ELSE $4 END)
        where storage_node_id = v_storage_node_id;
     END IF;
+
+    RETURN v_storage_node_id; 
+
 END
 $$;
 
