@@ -23,11 +23,15 @@ ALTER SCHEMA cornea OWNER TO cornea;
 
 SET search_path = cornea, pg_catalog;
 
+
+CREATE TYPE storagestate AS ENUM('open','closed','offline','decommissioned');
+
+
 --
 -- Name: get_asset_location(integer, bigint, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE FUNCTION get_asset_location(in_serviceid integer, in_assetid bigint, in_repid integer) RETURNS integer[]
+CREATE OR REPLACE FUNCTION get_asset_location(in_serviceid integer, in_assetid bigint, in_repid integer) RETURNS smallint[]
     LANGUAGE sql STABLE
     AS $$
   	select storage_location from asset where service_id=$1 and asset_id=$2 and representation_id=$3;
@@ -61,10 +65,10 @@ ALTER TABLE cornea.representation OWNER TO cornea;
 -- Name: get_representation(integer, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE FUNCTION get_representation(in_service_id integer, in_repid integer) RETURNS SETOF representation
+CREATE OR REPLACE FUNCTION get_representation(in_service_id integer, in_repid integer) RETURNS SETOF representation
     LANGUAGE sql STABLE
     AS $$
-  	select * from representations where service_id = $1 and repid = $2;
+  	select * from representation where service_id = $1 and representation_id = $2;
 $$;
 
 
@@ -74,10 +78,10 @@ ALTER FUNCTION cornea.get_representation(in_service_id integer, in_repid integer
 -- Name: get_representation_dependents(integer, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE FUNCTION get_representation_dependents(in_service_id integer, in_repid integer) RETURNS SETOF representation
+CREATE OR REPLACE FUNCTION get_representation_dependents(in_service_id integer, in_repid integer) RETURNS SETOF representation
     LANGUAGE sql STABLE
     AS $$
-	select * from representations where service_id = $1 and byproduct_of = $2;
+	select * from representation where service_id = $1 and byproduct_of = $2;
 $$;
 
 
@@ -89,14 +93,13 @@ ALTER FUNCTION cornea.get_representation_dependents(in_service_id integer, in_re
 
 CREATE TABLE storage_node (
     storage_node_id smallint NOT NULL,
-    state text NOT NULL,
+    state storagestate NOT NULL,
     total_storage bigint NOT NULL,
     used_storage bigint NOT NULL,
     ip text NOT NULL, 
     fqdn text NOT NULL,
     location text NOT NULL,
-    modified_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT check_storage_state CHECK ((state = ANY (ARRAY['open'::text, 'closed'::text, 'offline'::text, 'decommissioned'::text])))
+    modified_at timestamp with time zone DEFAULT now()
 );
 
 
@@ -109,7 +112,7 @@ ALTER TABLE cornea.storage_node OWNER TO cornea;
 CREATE OR REPLACE FUNCTION get_storage_nodes_by_state(in_state text) RETURNS SETOF storage_node
     LANGUAGE sql STABLE
     AS $$
-  	select * from storage_node where state=$1 or $1 is null;
+  	select * from storage_node where state=$1::storagestate or $1 is null;
 $$;
 
 
@@ -119,11 +122,11 @@ ALTER FUNCTION cornea.get_storage_nodes_by_state(in_state text) OWNER TO cornea;
 -- Name: make_asset(integer, bigint, integer, integer[]); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE FUNCTION make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location integer[]) RETURNS void
+CREATE OR REPLACE FUNCTION make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location integer[]) RETURNS void
     LANGUAGE sql
     AS $$
   insert into asset(service_id,asset_id,representation_id,storage_location) 
-      values ( in_service_id, in_asset_id , in_repid ,in_storage_location);
+      values ($1, $2, $3, $4);
 $$;
 
 
