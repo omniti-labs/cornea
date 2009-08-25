@@ -145,7 +145,7 @@ BEGIN
     SELECT storage_node_id FROM storage_node WHERE ip=$6 INTO v_storage_node_id;
     IF NOT FOUND THEN
        insert into storage_node (storage_node_id, state, total_storage, used_storage, fqdn, location, ip) 
-		values (coalesce($7,(select max(storage_node_id) +1 from storage_node)), $2, $3, $5, $4, $6)
+		values (coalesce($7,(select coalesce(max(storage_node_id),0) +1 from storage_node)), $2, $3, $5, $4, $6)
 			returning storage_node_id INTO v_storage_node_id;   
 	-- used the passed in node id if we have one, otherwise we'll generate one ourselves 
 	-- we don't use a sequence here, because then we would have to synchronize sequences across all nodes
@@ -201,38 +201,10 @@ ALTER SEQUENCE asset_asset_id_seq OWNED BY asset.asset_id;
 
 
 --
--- Name: storage_node_storage_node_id_seq; Type: SEQUENCE; Schema: cornea; Owner: cornea
---
-
-CREATE SEQUENCE storage_node_storage_node_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    MAXVALUE 32767
-    NO MINVALUE
-    CACHE 1;
-
-
-ALTER TABLE cornea.storage_node_storage_node_id_seq OWNER TO cornea;
-
---
--- Name: storage_node_storage_node_id_seq; Type: SEQUENCE OWNED BY; Schema: cornea; Owner: cornea
---
-
-ALTER SEQUENCE storage_node_storage_node_id_seq OWNED BY storage_node.storage_node_id;
-
-
---
 -- Name: asset_id; Type: DEFAULT; Schema: cornea; Owner: cornea
 --
 
 ALTER TABLE asset ALTER COLUMN asset_id SET DEFAULT nextval('asset_asset_id_seq'::regclass);
-
-
---
--- Name: storage_node_id; Type: DEFAULT; Schema: cornea; Owner: cornea
---
-
-ALTER TABLE storage_node ALTER COLUMN storage_node_id SET DEFAULT nextval('storage_node_storage_node_id_seq'::regclass);
 
 
 --
