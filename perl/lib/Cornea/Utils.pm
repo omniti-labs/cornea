@@ -2,8 +2,18 @@ package Cornea::Utils;
 
 use strict;
 use Carp;
+use Socket;
 use Switch;
+use POSIX qw/uname/;
 require "sys/syscall.ph";
+
+sub my_ip {
+    my @uname = POSIX::uname();
+    my @addr = gethostbyname($uname[1]);
+    my $name = gethostbyaddr($addr[4], AF_INET);
+    die unless ($name eq $uname[1]);
+    return inet_ntoa($addr[4]);
+}
 
 sub shuffle {
     my $array = shift;
@@ -55,8 +65,26 @@ sub fsinfo {
       my $bfree = unpack64(substr($buf, 16, 8));
       my $bavail = unpack64(substr($buf, 24, 8));
       my $files = unpack64(substr($buf, 32, 8));
-      my $ffree = unpack64(substr($buf, 80, 8));
+      my $ffree = unpack64(substr($buf, 40, 8));
       my $bfactor = $bsize / 1024;
+      return int($blocks * $bfactor), int(($blocks - $bavail) * $bfactor);
+    }
+    case 'solaris' {
+      my $buf = '\0' x 4096;
+      syscall(&SYS_statvfs, $path, $buf) == 0 or die "$!";
+      my $fbasetype = unpack "Z16", substr($buf, 72, 16);
+      die "Unsupported fs '$fbasetype' on solaris\n"
+        unless ($fbasetype eq 'zfs');
+      my $bsize = unpack64(substr($buf, 0, 8));
+      my $frsize = unpack64(substr($buf, 8, 8));
+      my $blocks = unpack64(substr($buf, 16, 8));
+      my $bfree = unpack64(substr($buf, 24, 8));
+      my $bavail = unpack64(substr($buf, 32, 8));
+      my $files = unpack64(substr($buf, 40, 8));
+      my $ffree = unpack64(substr($buf, 48, 8));
+      my $favail = unpack64(substr($buf, 56, 8));
+      my $fsid = unpack64(substr($buf, 64, 8));
+      my $bfactor = $frsize / 1024;
       return int($blocks * $bfactor), int(($blocks - $bavail) * $bfactor);
     }
     else { die "Unsupported platform '$^O'.  Add support." };

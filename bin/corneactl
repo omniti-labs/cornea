@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 use strict;
 
 # TODO fix the lib path to be better (or install)
@@ -10,6 +10,7 @@ use Getopt::Long;
 use YAML;
 use Carp;
 use Cornea::Config;
+use Socket;
 use Switch;
 
 my $conf_file;
@@ -23,19 +24,27 @@ switch($cmd) {
     print Dump($rt->getNodes());
   }
   case 'update-node' {
+    my $ip = Cornea::Utils::my_ip();
     my $fqdn = shift;
     my $location = shift;
+    if(defined $fqdn) {
+      # Adding a dot forces it to resolve outside search domains
+      my @addr = gethostbyname("$fqdn.");
+      die "fqdn '$fqdn' does not map to $ip\n"
+        unless eval { $ip eq inet_ntoa($addr[4]); };
+    }
     my $rt = Cornea::RecallTable->new();
     my ($total, $used) = Cornea::Utils::fsinfo($conf->get('Storage::base')."/.");
     my $min = $conf->get('Storage::minimum');
     $min = ($1*Cornea::Utils::units($2))/1024
       if ($min =~ /^(\d+)\s*([GBKMT])/i);
     my $state = (($total - $used) < $min) ? 'closed' : 'open';
-    $rt->updateNode($fqdn, { state => $state,
-                             total_storage => $total,
-                             used_storage => $used,
-                             location => $location,
-                           } );
+    $rt->updateNode($ip, { fqdn => $fqdn,
+                           state => $state,
+                           total_storage => $total,
+                           used_storage => $used,
+                           location => $location,
+                         } );
   }
   else {
     usage();
