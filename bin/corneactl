@@ -13,14 +13,68 @@ use Cornea::Config;
 use Socket;
 use Switch;
 
+sub exit_msg {
+  my $exit_code = shift;
+  my $message = shift || ($exit_code ? 'failure' : 'success');
+  print "$message\n";
+  exit($exit_code);
+}
+
 my $conf_file;
 GetOptions("c=s" => \$conf_file);
 my $conf = Cornea::Config->new($conf_file);
 
 my $cmd = shift;
+my $rt = Cornea::RecallTable->new();
+
+sub usage {
+  print <<EOF;
+$0 [-c conf_file] <command> [args]
+
+Commands:
+
+	list-metanodes
+
+	init-metanode
+
+	init-peer-metanode <nodename>
+
+	first-sync-peer-metanode <nodename>
+
+	drop-peer-metanode <nodename>
+
+	mirror-metanode <nodename>
+
+	list-nodes
+
+	update-node [fqdn location]
+EOF
+}
+
 switch($cmd) {
+  case 'list-metanodes' {
+    $rt->listAssetTables();
+  }
+  case 'init-metanode' {
+    exit_msg($rt->initAssetTable());
+  }
+  case 'init-peer-metanode' {
+    my $remote_node = shift or (usage() && exit -1);
+    exit_msg($rt->setupAssetQueue($remote_node));
+  }
+  case 'first-sync-peer-metanode' {
+    my $remote_node = shift or (usage() && exit -1);
+    exit_msg($rt->initialAssetSynch($remote_node));
+  }
+  case 'drop-peer-metanode' {
+    my $remote_node = shift;
+    exit_msg($rt->destroyAssetQueue($remote_node));
+  }
+  case 'mirror-metanode' {
+    my $remote_node = shift;
+    $rt->pullAssetTable($remote_node);
+  }
   case 'list-nodes' {
-    my $rt = Cornea::RecallTable->new();
     print Dump($rt->getNodes());
   }
   case 'update-node' {
@@ -33,7 +87,6 @@ switch($cmd) {
       die "fqdn '$fqdn' does not map to $ip\n"
         unless eval { $ip eq inet_ntoa($addr[4]); };
     }
-    my $rt = Cornea::RecallTable->new();
     my ($total, $used) = Cornea::Utils::fsinfo($conf->get('Storage::base')."/.");
     my $min = $conf->get('Storage::minimum');
     $min = ($1*Cornea::Utils::units($2))/1024

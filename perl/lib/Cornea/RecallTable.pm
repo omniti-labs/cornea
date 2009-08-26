@@ -33,7 +33,6 @@ sub __reconnect {
 sub new {
   my $class = shift;
   my $self = bless { }, $class;
-  $self->__connect;
   $self;
 }
 
@@ -232,4 +231,184 @@ sub repInfoDependents {
   return @deps;
 }
 
+sub initAssetTable {
+  my $self = shift;
+  my $config = Cornea::Config->new();
+  my $host = $config->get('sysinfo::nodename');
+  (my $tbl = $host) =~ s/\-/_/g;
+  $tbl =~ s/\..*//;
+  my $dbh = DBI->connect("dbi:Pg:host=localhost;dbname=cornea",
+                         $config->get("DB::user"),
+                         $config->get("DB::pass"),
+                         { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
+                        );
+  $dbh->begin_work();
+  eval {
+    $dbh->do("CREATE TABLE cornea.asset_$tbl
+                    (CONSTRAINT asset_${tbl}_pkey
+                        PRIMARY KEY (service_id, asset_id, representation_id))
+                     INHERITS (cornea.asset)");
+    $dbh->do("CREATE OR REPLACE FUNCTION cornea.make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location integer[]) RETURNS void AS 'insert into asset_${tbl} (service_id, asset_id, representation_id, storage_location) VALUES (\$1, \$2, \$3, \$4);' LANGUAGE sql");
+    $dbh->commit();
+  };
+  if($@) {
+    my $err = $@;
+    eval { $dbh->rollback; };
+    return (-1, "already initialized") if $err =~ /already exists/;
+    return (-1, $err);
+  }
+  return 0;
+}
+
+sub setupAssetQueue {
+  my $self = shift;
+  my $config = Cornea::Config->new();
+  my $host = shift;
+  gethostbyname($host) || die "could not resolve $host\n";;
+  (my $tbl = $host) =~ s/\-/_/g;
+  $tbl =~ s/\..*//;
+  my $phost = $config->get('sysinfo::nodename');
+  (my $ptbl = $phost) =~ s/\-/_/g;
+  $ptbl =~ s/\..*//;
+  my $dbh = DBI->connect("dbi:Pg:host=localhost;dbname=cornea",
+                         $config->get("DB::user"),
+                         $config->get("DB::pass"),
+                         { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
+                        );
+  $dbh->begin_work();
+  eval {
+    $dbh->do("CREATE TABLE cornea.asset_$tbl
+                    (CONSTRAINT asset_${tbl}_uc
+                        PRIMARY KEY (service_id, asset_id, representation_id))
+                     INHERITS (cornea.asset)");
+    $dbh->do("CREATE TABLE cornea.asset_${tbl}_queue
+                     (LIKE cornea.asset
+                      EXCLUDING CONSTRAINTS
+                      EXCLUDING INDEXES)");
+    $dbh->do(<<SQL);
+CREATE FUNCTION cornea.populate_asset_${tbl}_queue() RETURNS TRIGGER
+  AS '
+DECLARE
+BEGIN
+  INSERT INTO cornea.asset_${tbl}_queue
+              (asset_id, service_id, representation_id, storage_location)
+       VALUES (NEW.asset_id, NEW.service_id, NEW.representation_id,
+               NEW.storage_location);
+  RETURN NEW;
+END
+' LANGUAGE plpgsql
+SQL
+    $dbh->do("CREATE TRIGGER asset_${tbl}_queue_trigger
+                AFTER INSERT OR UPDATE ON cornea.asset_${ptbl}
+                FOR EACH ROW
+                EXECUTE PROCEDURE cornea.populate_asset_${tbl}_queue()");
+    $dbh->commit();
+  };
+  if($@) {
+    my $err = $@;
+    eval { $dbh->rollback; };
+    return (-1, "init-metanode first")
+      if $err =~ /"cornea.asset_$ptbl" does not exist/;
+    return (-1, "already initialized") if $err =~ /already exists/;
+    die $err;
+  }
+  return 0;
+}
+
+sub destroyAssetQueue {
+  my $self = shift;
+  my $config = Cornea::Config->new();
+  my $host = shift;
+  gethostbyname($host) || die "could not resolve $host\n";;
+  (my $tbl = $host) =~ s/\-/_/g;
+  $tbl =~ s/\..*//;
+  my $phost = $config->get('sysinfo::nodename');
+  (my $ptbl = $phost) =~ s/\-/_/g;
+  $ptbl =~ s/\..*//;
+  my $dbh = DBI->connect("dbi:Pg:host=localhost;dbname=cornea",
+                         $config->get("DB::user"),
+                         $config->get("DB::pass"),
+                         { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
+                        );
+  $dbh->begin_work();
+  eval {
+    $dbh->do("DROP TRIGGER asset_${tbl}_queue_trigger ON cornea.asset_${ptbl}");
+    $dbh->do("DROP FUNCTION cornea.populate_asset_${tbl}_queue()");
+    $dbh->do("DROP TABLE cornea.asset_${tbl}_queue");
+    $dbh->do("DROP TABLE cornea.asset_$tbl");
+    $dbh->commit();
+  };
+  if($@) {
+    my $err = $@;
+    eval { $dbh->rollback; };
+    return (-1, "already perfomed") if $err =~ /does not exist/;
+    return (-1, $err);
+  }
+  return 0;
+}
+
+sub initialAssetSynch {
+  my $self = shift;
+  my $config = Cornea::Config->new();
+  my $host = shift;
+  gethostbyname($host) || die "could not resolve $host\n";;
+  (my $tbl = $host) =~ s/\-/_/g;
+  $tbl =~ s/\..*//;
+  my $phost = $config->get('sysinfo::nodename');
+  (my $ptbl = $phost) =~ s/\-/_/g;
+  $ptbl =~ s/\..*//;
+  my $total_rows = 0;
+  my $dbh = DBI->connect("dbi:Pg:host=$host;dbname=cornea",
+                         $config->get("DB::user"),
+                         $config->get("DB::pass"),
+                         { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
+                        );
+  my $ldbh = DBI->connect("dbi:Pg:host=localhost;dbname=cornea",
+                         $config->get("DB::user"),
+                         $config->get("DB::pass"),
+                         { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
+                        );
+  $dbh->begin_work();
+  $ldbh->begin_work();
+  my $problem;
+  eval {
+    $problem = "peer not locally initialized";
+    my $isth = $ldbh->prepare(
+        "INSERT INTO cornea.asset_${tbl}
+                    (asset_id, service_id,
+                     representation_id, storage_location)
+              VALUES (?,?,?,?::smallint[])");
+    $problem = "remote not initialized";
+    $dbh->do("DECLARE initpull CURSOR FOR
+               SELECT asset_id, service_id,
+                      representation_id, storage_location
+                 FROM cornea.asset_${tbl}");
+    $problem = "remote peer not initialized";
+    $dbh->do("TRUNCATE cornea.asset_${ptbl}_queue");
+    $problem = "error pulling remote data";
+    my $sth = $dbh->prepare("FETCH FORWARD 10000 FROM initipull");
+    my $internal_rows_moved;
+    do {
+      $internal_rows_moved = 0;
+      $sth->execute();
+      while(my @row = $sth->fetchrow()) {
+        $problem = "error insert local data";
+        $isth->execute(@row);
+        $internal_rows_moved++;
+        $problem = "error pulling remote data";
+      }
+      $total_rows += $internal_rows_moved;
+    } while($internal_rows_moved);
+    $dbh->do("CLOSE initpull");
+    $dbh->commit();
+    $ldbh->commit();
+  };
+  if($@) {
+    my $err = $@;
+    eval { $ldbh->rollback; };
+    eval { $dbh->rollback; };
+    return (-1, "$problem:\n$err");
+  }
+  return (0, "$total_rows copied");
+}
 1;
