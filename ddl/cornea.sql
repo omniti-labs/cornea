@@ -109,10 +109,10 @@ ALTER TABLE cornea.storage_node OWNER TO cornea;
 -- Name: get_storage_nodes_by_state(text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION get_storage_nodes_by_state(in_state text) RETURNS SETOF storage_node
+CREATE OR REPLACE FUNCTION get_storage_nodes_by_state(in_state storagestate) RETURNS SETOF storage_node
     LANGUAGE sql STABLE
     AS $$
-  	select * from storage_node where state=$1::storagestate or $1 is null;
+  	select * from storage_node where state=$1 or $1 is null;
 $$;
 
 
@@ -136,7 +136,7 @@ ALTER FUNCTION cornea.make_asset(in_service_id integer, in_asset_id bigint, in_r
 -- Name: make_storage_node(text, bigint, bigint, text, text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION set_storage_node(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text, in_ip text, in_storage_node_id storage_node.storage_node_id%type) RETURNS storage_node.storage_node_id%type 
+CREATE OR REPLACE FUNCTION set_storage_node(in_state storagestate, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text, in_ip text, in_storage_node_id storage_node.storage_node_id%type) RETURNS storage_node.storage_node_id%type 
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -145,7 +145,7 @@ BEGIN
     SELECT storage_node_id FROM storage_node WHERE ip=$6 INTO v_storage_node_id;
     IF NOT FOUND THEN
        insert into storage_node (storage_node_id, state, total_storage, used_storage, fqdn, location, ip) 
-		values (coalesce($7,(select coalesce(max(storage_node_id),0) +1 from storage_node)), $2, $3, $5, $4, $6)
+		values (coalesce($7,(select coalesce(max(storage_node_id),0) +1 from storage_node)),$1, $2, $3, $5, $4, $6)
 			returning storage_node_id INTO v_storage_node_id;   
 	-- used the passed in node id if we have one, otherwise we'll generate one ourselves 
 	-- we don't use a sequence here, because then we would have to synchronize sequences across all nodes
@@ -163,7 +163,7 @@ END
 $$;
 
 
-ALTER FUNCTION cornea.set_storage_node(in_state text, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text) OWNER TO cornea;
+ALTER FUNCTION cornea.set_storage_node(in_state storagestate, in_total_storage bigint, in_used_storage bigint, in_location text, in_fqdn text) OWNER TO cornea;
 
 --
 -- Name: asset; Type: TABLE; Schema: cornea; Owner: cornea; Tablespace: 
@@ -179,6 +179,9 @@ CREATE TABLE asset (
 
 ALTER TABLE cornea.asset OWNER TO cornea;
 
+CREATE OR REPLACE FUNCTION asset_prevent_inserts() RETURNS trigger AS $$BEGIN RAISE EXCEPTION 'Cornea Application Error: Insert into parent asset table not allowed'; END$$ LANGUAGE plpgsql; 
+
+CREATE TRIGGER asset_prevent_inserts BEFORE insert ON asset FOR EACH ROW EXECUTE PROCEDURE asset_prevent_inserts();                                                                                                                           
 --
 -- Name: asset_asset_id_seq; Type: SEQUENCE; Schema: cornea; Owner: cornea
 --
