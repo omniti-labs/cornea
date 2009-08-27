@@ -242,6 +242,7 @@ sub initAssetTable {
                          $config->get("DB::pass"),
                          { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
                         );
+  $dbh->do("set client_min_messages = 'WARNING'");
   $dbh->begin_work();
   eval {
     $dbh->do("CREATE TABLE cornea.asset_$tbl
@@ -275,6 +276,7 @@ sub setupAssetQueue {
                          $config->get("DB::pass"),
                          { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
                         );
+  $dbh->do("set client_min_messages = 'WARNING'");
   $dbh->begin_work();
   eval {
     $dbh->do("CREATE TABLE cornea.asset_$tbl
