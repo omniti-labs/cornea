@@ -248,7 +248,7 @@ sub initAssetTable {
                     (CONSTRAINT asset_${tbl}_pkey
                         PRIMARY KEY (service_id, asset_id, representation_id))
                      INHERITS (cornea.asset)");
-    $dbh->do("CREATE OR REPLACE FUNCTION cornea.make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location integer[]) RETURNS void AS 'insert into asset_${tbl} (service_id, asset_id, representation_id, storage_location) VALUES (\$1, \$2, \$3, \$4);' LANGUAGE sql");
+    $dbh->do("CREATE OR REPLACE FUNCTION cornea.make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location smallint[]) RETURNS void AS 'delete from asset where service_id = \$1 and asset_id = \$2 and representation_id = \$3; insert into asset_${tbl} (service_id, asset_id, representation_id, storage_location) VALUES (\$1, \$2, \$3, \$4);' LANGUAGE sql");
     $dbh->commit();
   };
   if($@) {
@@ -438,14 +438,17 @@ sub pullAssetTable {
     $ldbh->begin_work();
     eval {
       my $from = $dbh->prepare("DELETE FROM cornea.asset_${ptbl}_queue RETURNING *");
-      my $to = $ldbh->prepare(
+      my $todel = $ldbh->prepare("DELETE FROM cornea.asset
+                 WHERE asset_id = ? and service_id = ? and representation_id = ?");
+      my $toins = $ldbh->prepare(
           "INSERT INTO cornea.asset_${tbl}
                       (asset_id, service_id,
                        representation_id, storage_location)
                 VALUES (?,?,?,?::smallint[])");
       $from->execute();
       while(my @row = $from->fetchrow()) {
-        $to->execute(@row);
+        $todel->execute(@row[0..2]);
+        $toins->execute(@row);
         $total_rows++;
       }
       $ldbh->commit;
