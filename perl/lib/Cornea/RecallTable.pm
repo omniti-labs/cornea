@@ -386,7 +386,7 @@ sub initialAssetSynch {
     $problem = "remote peer not initialized";
     $dbh->do("TRUNCATE cornea.asset_${ptbl}_queue");
     $problem = "error pulling remote data";
-    my $sth = $dbh->prepare("FETCH FORWARD 10000 FROM initipull");
+    my $sth = $dbh->prepare("FETCH FORWARD 10000 FROM initpull");
     my $internal_rows_moved;
     do {
       $internal_rows_moved = 0;
