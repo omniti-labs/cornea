@@ -411,4 +411,54 @@ sub initialAssetSynch {
   }
   return (0, "$total_rows copied");
 }
+sub pullAssetTable {
+  my $self = shift;
+  my $config = Cornea::Config->new();
+  my $host = shift;
+  my $timeout = shift || 1;
+  gethostbyname($host) || die "could not resolve $host\n";;
+  (my $tbl = $host) =~ s/\-/_/g;
+  $tbl =~ s/\..*//;
+  my $phost = $config->get('sysinfo::nodename');
+  (my $ptbl = $phost) =~ s/\-/_/g;
+  $ptbl =~ s/\..*//;
+  my $total_rows = 0;
+  my $dbh = DBI->connect("dbi:Pg:host=$host;dbname=cornea",
+                         $config->get("DB::user"),
+                         $config->get("DB::pass"),
+                         { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
+                        );
+  my $ldbh = DBI->connect("dbi:Pg:host=localhost;dbname=cornea",
+                         $config->get("DB::user"),
+                         $config->get("DB::pass"),
+                         { PrintError => 0, RaiseError => 1, AutoCommit => 1 },
+                        );
+  while(1) {
+    $dbh->begin_work();
+    $ldbh->begin_work();
+    eval {
+      my $from = $dbh->prepare("DELETE FROM cornea.asset_${ptbl}_queue RETURNING *");
+      my $to = $ldbh->prepare(
+          "INSERT INTO cornea.asset_${tbl}
+                      (asset_id, service_id,
+                       representation_id, storage_location)
+                VALUES (?,?,?,?::smallint[])");
+      $from->execute();
+      while(my @row = $from->fetchrow()) {
+        $to->execute(@row);
+        $total_rows++;
+      }
+      $ldbh->commit;
+      $dbh->commit;
+    };
+    if($@) {
+      my $err = $@;
+      eval { $ldbh->rollback; };
+      eval { $dbh->rollback; };
+      return (-1, "$total_rows compied.\n$err");
+    }
+    sleep($timeout);
+  }
+  return (0, "$total_rows copied");
+}
 1;
