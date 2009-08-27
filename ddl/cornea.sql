@@ -1,5 +1,6 @@
 --
--- PostgreSQL database dump
+-- *NOTE* This is not a PostgreSQL database dump. 
+-- If you want to update the schema, you should edit this file manually
 --
 
 SET statement_timeout = 0;
@@ -122,11 +123,12 @@ ALTER FUNCTION cornea.get_storage_nodes_by_state(in_state text) OWNER TO cornea;
 -- Name: make_asset(integer, bigint, integer, integer[]); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location integer[]) RETURNS void
+CREATE OR REPLACE FUNCTION make_asset(in_service_id integer, in_asset_id bigint, in_repid integer, in_storage_location smallint[]) RETURNS void
     LANGUAGE sql
     AS $$
-  insert into asset(service_id,asset_id,representation_id,storage_location) 
-      values ($1, $2, $3, $4);
+	-- remove any existing copies, ensures that this node becomes "owner" of the asset 
+	delete from asset where service_id = $1 and asset_id = $2 and storage_location = $4; 
+  	insert into asset(service_id,asset_id,representation_id,storage_location) values ($1, $2, $3, $4);
 $$;
 
 
