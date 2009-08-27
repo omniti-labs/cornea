@@ -76,10 +76,12 @@ sub store {
     }
     else {
       my $copies_needed = $repinfo->replicationCount - $S->count;
+      my $nodelist = join(',', map { $S->id() } ($S->items()));
       if (not Cornea::Queue::enqueue('REPLICATE',
                                      { 'serviceId' => $serviceId,
                                        'assetId' => $assetId,
                                        'repId' => $repId,
+                                       'copyOn' => $nodelist,
                                        'copies' => $copies_needed })) {
         foreach my $n ($S->items) { $n->delete($serviceId, $assetId, $repId); }
         die "Failed to reach required replication count";
@@ -92,10 +94,12 @@ sub store {
   }
 
   if (scalar($repinfo->dependents) > 0) {
+    my $nodelist = join(',', map { $S->id() } ($S->items()));
     if (not Cornea::Queue::enqueue('PROCESS',
                                    { 'serviceId' => $serviceId,
                                      'assetId' => $assetId,
-                                     'repId' => $repId })) {
+                                     'repId' => $repId,
+                                     'copyOn' => $nodelist })) {
       foreach my $n ($S->items) { $n->delete($serviceId, $assetId, $repId); }
       die "Failed to queue work against asset";
     }
@@ -182,10 +186,12 @@ sub replicate {
 
   # If the following updates fail, we only undo the strage changeset $C
   if ($copies > 0) {
+    my $nodelist = join(',', map { $C->id() } ($C->items()));
     if (not Cornea::Queue::enqueue('REPLICATE',
                                    { 'serviceId' => $serviceId,
                                      'assetId' => $assetId,
                                      'repId' => $repId,
+                                     'copyOn' => $nodelist,
                                      'copies' => $copies })) {
       foreach my $n ($C->items) { $n->delete($serviceId, $assetId, $repId); }
       die "Failed to reach required replication count";
@@ -202,7 +208,7 @@ sub replicate {
 
 sub worker {
   my $self = shift;
-  my $queue = Cornea::Queue->new();
+  my $queue = Cornea::Queue->new(@_);
 
   $queue->worker(
     sub {

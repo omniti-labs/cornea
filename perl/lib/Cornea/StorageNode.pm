@@ -38,11 +38,12 @@ sub new_from_row {
   my $hash = shift;
   bless $hash, $class;
 }
-sub id { shift->{id}; }
+sub id { shift->{storage_node_id}; }
 sub state { shift->{state}; }
 sub total_storage { shift->{total_storage}; }
 sub used_storage { shift->{used_storage}; }
 sub fqdn { shift->{fqdn}; }
+sub ip { shift->{ip}; }
 sub location { shift->{location}; }
 
 sub distance() {

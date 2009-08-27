@@ -48,6 +48,9 @@ Commands:
 	list-nodes
 
 	update-node [fqdn location]
+
+	replication-manager
+
 EOF
 }
 
@@ -98,6 +101,9 @@ switch($cmd) {
                            used_storage => $used,
                            location => $location,
                          } );
+  }
+  case 'replication-manager' {
+    Cornea->new()->worker($conf->get('MQ::queue_replicate'));
   }
   else {
     usage();
