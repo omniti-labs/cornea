@@ -131,60 +131,13 @@ sub _2pc_generic {
   if ($@) {
     my $real_error = $@;
     $rv = undef;
-    eval { foreach (@dbh) { $_->[1]->do("rollback prepared 'cornea_node'"); } };
+    eval { foreach (@dbh) { $_->[1]->do("rollback prepared '$named_txn'"); } };
     die $real_error;
   }
   foreach (@dbh) { $_->[1]->disconnect; }
   return $rv;
 }
       
-sub _2pc_add_storage {
-  my $ip = shift;
-  my $attr = shift;
-  my $storage_node_id;
-  my $config = Cornea::Config->new();
-  my $dsns = $config->get_list("DB::dsn");
-  my @dbh = map {
-    my $dbh = DBI->connect($_,
-                 $config->get("DB::user"),
-                 $config->get("DB::pass"),
-                 { PrintError => 0, RaiseError => 1, AutoCommit => 1 }
-                );
-    $dbh->begin_work();
-    $dbh;
-  } @$dsns;
-  eval {
-    foreach (@dbh) {
-      eval {
-        my $sth = $_->prepare("select set_storage_node(?,?,?,?,?,?,?)");
-        $sth->execute($attr->{state},
-                      $attr->{total_storage}, $attr->{used_storage},
-                      $attr->{location}, $attr->{fqdn}, $ip, $storage_node_id);
-        my ($returned_storade_node_id) = $sth->fetchrow();
-        $storage_node_id ||= $returned_storade_node_id;
-        $sth->finish();
-        die "Storage node trickery! (this should never happen).\n"
-          if($storage_node_id != $returned_storade_node_id);
-      };
-      if ($@) {
-        die "location must be specified for first-time update\n"
-          if $@ =~ /null value in column "location"/;
-        die $@ if $@;
-      }
-    }
-    foreach (@dbh) { $_->do("prepare transaction 'cornea_node'"); }
-    foreach (@dbh) { $_->do("commit prepared 'cornea_node'"); }
-  };
-  if ($@) {
-    my $real_error = $@;
-    $storage_node_id = undef;
-    eval { foreach (@dbh) { $_->do("rollback prepared 'cornea_node'"); } };
-    die $real_error;
-  }
-  foreach (@dbh) { $_->disconnect; }
-  die $@ unless($storage_node_id);
-  return $storage_node_id;
-}
 sub updateNode {
   my $self = shift;
   my $ip = shift;
@@ -202,7 +155,28 @@ sub updateNode {
     unless !defined($attr->{fqdn}) or length($attr->{fqdn});
 
   if(defined($attr->{location}) || defined($attr->{fqdn})) {
-    return return _2pc_add_storage($ip, $attr);
+    return $self->_2pc_generic(sub {
+      eval {
+        my $dsn = shift;
+        my $dbh = shift;
+        my $rv = shift;
+        my $sth = $dbh->prepare("select set_storage_node(?,?,?,?,?,?,?)");
+        my $storage_node_id = $$rv;
+        $sth->execute($attr->{state},
+                      $attr->{total_storage}, $attr->{used_storage},
+                      $attr->{location}, $attr->{fqdn}, $ip, $storage_node_id);
+        my ($returned_storade_node_id) = $sth->fetchrow();
+        $$rv ||= $returned_storade_node_id;
+        $sth->finish();
+        die "Storage node trickery! (this should never happen).\n"
+          if($$rv != $returned_storade_node_id);
+      };
+      if ($@) {
+        die "location and fqdn must be specified for first-time update\n"
+          if $@ =~ /null value in column "(?:location|fqdn)"/;
+        die $@ if $@;
+      }
+    });
   }
   my $dsns = $config->get_list("DB::dsn");
   foreach (@$dsns) {
@@ -222,9 +196,12 @@ sub updateNode {
       $sth->finish();
     };
     if ($@) {
+      my $err = $@;
+      $err = "failed: no match by IP\n"
+        if $@ =~ /null value in column "(?:location|fqdn)"/;
       print STDERR "\t$@\n" if $main::DEBUG;
       unless ($tried++) { $self->__reconnect();  goto again; }
-      print STDERR "$_: $@";
+      print STDERR "$_: $err";
     }
   }
   return 0;
