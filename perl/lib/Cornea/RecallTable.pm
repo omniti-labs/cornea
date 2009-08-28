@@ -83,11 +83,15 @@ sub getNodes {
   my $type = shift;
   my $tried = 0;
   my $snl;
+  my $bind = undef;
+  if (defined($type)) {
+    $bind = (ref $type eq 'ARRAY') ? ('{'.join(',', @$type).'}') : "{$type}";
+  }
  again:
   eval {
     $snl = Cornea::StorageNodeList->new();
-    my $sth = $self->{dbh}->prepare("select * from get_storage_nodes_by_state(?)");
-    $sth->execute($type);
+    my $sth = $self->{dbh}->prepare("select * from get_storage_nodes(?::storagestate[])");
+    $sth->execute($bind);
     while(my $row = $sth->fetchrow_hashref()) {
       $snl->add(Cornea::StorageNode->new_from_row($row));
     }
