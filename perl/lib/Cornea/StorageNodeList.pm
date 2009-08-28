@@ -4,7 +4,9 @@ use strict;
 sub new {
   my $class = shift;
   $class = ref($class) ? ref $class : $class;
-  bless {}, $class;
+  my $self = bless {}, $class;
+  foreach (@_) { $self->add($_); }
+  $self;
 }
 
 sub items {

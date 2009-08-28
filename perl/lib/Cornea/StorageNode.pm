@@ -1,5 +1,6 @@
 package Cornea::StorageNode;
 use strict;
+use WWW::Curl::Easy;
 
 =pod
 
@@ -60,28 +61,88 @@ sub distance() {
   return $dist;
 }
 
+sub api_url {
+  my $self = shift;
+  my $function = shift;
+  my $url = "http://" . $self->ip() . ":8091/api/$function";
+  $url .= "/" . join ("/", @_) if @_;
+  return $url;
+}
+sub asset_url {
+  my $self = shift;
+  return "http://" . $self->ip() . "/" . join ("/", @_);
+}
 sub put {
   my $self = shift;
   my $source = shift;
   my ($serviceId,$assetId,$repId) = @_;
 
-  if(ref $source eq 'Cornea::StorageNode' or
-     ref $source eq 'Cornea::StorageNodeList') {
+  # Transform nodes into lists.
+  $source = Cornea::StorageNodeList->new($source)
+    if(ref $source eq 'Cornea::StorageNode');
+
+  if(ref $source eq 'Cornea::StorageNodeList') {
     # This is a storage node(list) from which to copy.
+    my $url = $self->api_url('copy', @_);
+    my $curl = new WWW::Curl::Easy;
+    my $ips = join ',', map { $_->ip() } ($source->items());
+    $curl->setopt(CURLOPT_URL, $url);
+    $curl->setopt(CURLOPT_HEADER, [ "X-Cornea-Node: $ips" ]);
+    my $retcode = $curl->perform();
+    return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
+    return 0;
   }
   else {
     # This is an actual asset
+    my $url = $self->api_url('store', @_);
+    my $curl = new WWW::Curl::Easy;
+    $source->sysseek(0,2);
+    my $len = $source->tell();
+    $source->sysseek(0,0);
+    $curl->setopt(CURLOPT_URL, $url);
+    $curl->setopt(CURLOPT_READFUNCTION,
+                  sub { my $buf; $source->sysread($buf, $_[0]); return $buf } );
+    $curl->setopt(CURLOPT_INFILESIZE, $len);
+    $curl->setopt(CURLOPT_UPLOAD, 1);
+    $curl->setopt(CURLOPT_CUSTOMREQUEST, "PUT");
+    $curl->setopt(CURLOPT_FAILONERROR, 1);
+  
+    my $retcode = $curl->perform();
+    return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
+    return 0;
   }
 }
 
 sub delete {
   my $self = shift;
   my ($serviceId,$assetId,$repId) = @_;
+  my $url = $self->api_url('delete', @_);
+  my $curl = new WWW::Curl::Easy;
+  $curl->setopt(CURLOPT_URL, $url);
+  $curl->setopt(CURLOPT_CUSTOMREQUEST, "DELETE");
+  $curl->setopt(CURLOPT_FAILONERROR, 1);
+
+  my $retcode = $curl->perform();
+  return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
+  return 0;
 }
 
 sub fetch {
   my $self = shift;
   my ($serviceId,$assetId,$repId) = @_;
+  my $url = $self->asset_url(@_);
+  my $file = IO::File->new_tmpfile();
+  my $curl = new WWW::Curl::Easy;
+  $curl->setopt(CURLOPT_URL, $url);
+  $curl->setopt(CURLOPT_FILE, $file);
+  $curl->setopt(CURLOPT_WRITEFUNCTION,
+                sub { my ($data, $file) = @_;
+                      return $file->syswrite($data);
+                    });
+
+  my $retcode = $curl->perform();
+  return $file if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
+  return undef;
 }
 
 1;
