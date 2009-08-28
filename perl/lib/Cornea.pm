@@ -34,7 +34,7 @@ sub store {
   my $gold = undef;
 
   my $repinfo = $rt->repInfo($serviceId, $repId);
-  my $N = $rt->getOpenNodes();
+  my $N = $rt->getNodes('open');
 
   my $S = Cornea::StorageNodeList->new();
   foreach my $n ($N->items) {
@@ -121,7 +121,7 @@ sub process {
   my $N = Cornea::StorageNodeList->new();
   my $input = undef;
 
-  my $AvailableNodes = $rt->getNodes('{open,closed}');
+  my $AvailableNodes = $rt->getNodes(['open','closed']);
 
   # Find where it is, based on the work order.
   my %node_map;
@@ -170,7 +170,7 @@ sub replicate {
   my $rt = Cornea::RecallTable->new();
   my $repinfo = $rt->repInfo($serviceId, $repId);
 
-  my $AvailableNodes = $rt->getNodes('{open,closed}');
+  my $AvailableNodes = $rt->getNodes(['open','closed']);
 
   my $S = Cornea::StoreNodeList->new();
   # Find where it is, based on the work order.
@@ -178,7 +178,7 @@ sub replicate {
   foreach (@nodeIds) { $node_map{$_}++; }
   foreach ($AvailableNodes->items()) { $S->add($_) if ($node_map{$_->id()}); }
 
-  my $N = $rt->getOpenNodes();
+  my $N = $rt->getNodes('open');
   $S = $rt->find($serviceId, $assetId, $repId) unless ($S->items() == 0);
   my $C = Cornea::StorageNodeList->new();
   foreach my $n ($S->items) {
