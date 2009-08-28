@@ -13,6 +13,8 @@ use Cornea::Config;
 use Socket;
 use Switch;
 
+our $DEBUG = 0;
+
 sub exit_msg {
   my $exit_code = shift;
   my $message = shift || ($exit_code ? 'failure' : 'success');
@@ -21,7 +23,8 @@ sub exit_msg {
 }
 
 my $conf_file;
-GetOptions("c=s" => \$conf_file);
+GetOptions("c=s" => \$conf_file,
+           "d" => \$DEBUG);
 my $conf = Cornea::Config->new($conf_file);
 
 my $cmd = shift;

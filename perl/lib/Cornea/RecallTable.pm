@@ -2,6 +2,7 @@ package Cornea::RecallTable;
 use strict;
 use Cornea::Config;
 use Cornea::Utils;
+use YAML;
 use DBI;
 
 sub __connect {
@@ -213,15 +214,17 @@ sub updateNode {
     my $tried = 0;
    again:
     eval {
-      my $sth = $self->{dbh}->prepare("select set_storage_node(?,?,?,?,?,?,?)");
+      print STDERR "$_ -> updating node info\n" if $main::DEBUG;
+      my $sth = $dbh->prepare("select set_storage_node(?,?,?,?,?,?,?)");
       $sth->execute($attr->{state},
                     $attr->{total_storage}, $attr->{used_storage},
                     $attr->{location}, $attr->{fqdn}, $ip, undef);
       $sth->finish();
     };
     if ($@) {
+      print STDERR "\t$@\n" if $main::DEBUG;
       unless ($tried++) { $self->__reconnect();  goto again; }
-      print STDERR $@;
+      print STDERR "$_: $@";
     }
   }
   return 0;
