@@ -56,7 +56,7 @@ EOF
 
 switch($cmd) {
   case 'list-metanodes' {
-    $rt->listAssetTables();
+    print Dump($rt->listAssetTables());
   }
   case 'init-metanode' {
     exit_msg($rt->initAssetTable());

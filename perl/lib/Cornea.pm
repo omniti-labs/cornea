@@ -114,12 +114,22 @@ sub process {
   my $serviceId = $detail->{serviceId};
   my $assetId = $detail->{assetId};
   my $repId = $detail->{repId};
+  my @nodeIds = split /,/, $detail->{copyOn};
   my $rt = Cornea::RecallTable->new();
   my $repinfo = $rt->repInfo($serviceId, $repId);
   return if(scalar($repinfo->dependents) == 0);
-
+  my $N = Cornea::StorageNodeList->new();
   my $input = undef;
-  my $N = $rt->find($serviceId, $assetId, $repId);
+
+  my $AvailableNodes = $rt->getNodes('{open,closed}');
+
+  # Find where it is, based on the work order.
+  my %node_map;
+  foreach (@nodeIds) { $node_map{$_}++; }
+  foreach ($AvailableNodes->items()) { $N->add($_) if ($node_map{$_->id()}); }
+
+  # Find it if we don't know where it is.
+  $N = $rt->find($serviceId, $assetId, $repId) if ($N->items() == 0);
   foreach my $n ($N->items) {
     $input = $n->fetch($serviceId, $assetId, $repId);
     last if($input);
@@ -156,11 +166,20 @@ sub replicate {
   my $assetId = $detail->{assetId};
   my $repId = $detail->{repId};
   my $copies = $detail->{copies};
+  my @nodeIds = split /,/, $detail->{copyOn};
   my $rt = Cornea::RecallTable->new();
   my $repinfo = $rt->repInfo($serviceId, $repId);
 
+  my $AvailableNodes = $rt->getNodes('{open,closed}');
+
+  my $S = Cornea::StoreNodeList->new();
+  # Find where it is, based on the work order.
+  my %node_map;
+  foreach (@nodeIds) { $node_map{$_}++; }
+  foreach ($AvailableNodes->items()) { $S->add($_) if ($node_map{$_->id()}); }
+
   my $N = $rt->getOpenNodes();
-  my $S = $rt->find($serviceId, $assetId, $repId);
+  $S = $rt->find($serviceId, $assetId, $repId) unless ($S->items() == 0);
   my $C = Cornea::StorageNodeList->new();
   foreach my $n ($S->items) {
     $N->remove($n);

@@ -100,6 +100,39 @@ sub getNodes {
   return $snl;
 }
 
+sub _2pc_generic {
+  my $self = shift;
+  my $code = shift;
+  my $config = Cornea::Config->new();
+  my $dsns = $config->get_list("DB::dsn");
+  my $rv = undef;
+  my $named_txn = "cornea_$$";
+  my @dbh = map {
+    my $dbh = DBI->connect($_,
+                 $config->get("DB::user"),
+                 $config->get("DB::pass"),
+                 { PrintError => 0, RaiseError => 1, AutoCommit => 1 }
+                );
+    $dbh->begin_work();
+    [$_, $dbh];
+  } @$dsns;
+  eval {
+    foreach (@dbh) {
+      &$code($_->[0], $_->[1], \$rv);
+    }
+    foreach (@dbh) { $_->[1]->do("prepare transaction '$named_txn'"); }
+    foreach (@dbh) { $_->[1]->do("commit prepared '$named_txn'"); }
+  };
+  if ($@) {
+    my $real_error = $@;
+    $rv = undef;
+    eval { foreach (@dbh) { $_->[1]->do("rollback prepared 'cornea_node'"); } };
+    die $real_error;
+  }
+  foreach (@dbh) { $_->[1]->disconnect; }
+  return $rv;
+}
+      
 sub _2pc_add_storage {
   my $ip = shift;
   my $attr = shift;
@@ -465,5 +498,51 @@ sub pullAssetTable {
     sleep($timeout);
   }
   return (0, "$total_rows copied");
+}
+
+sub listAssetTables {
+  my $self = shift;
+  $self->_2pc_generic(sub {
+    my $dsn = shift;
+    my $dbh = shift;
+    my $rv = shift;
+    $$rv ||= {};
+    my $sth = $dbh->prepare(<<SQL);
+
+    select relname, (case when pg_trigger.oid is null
+                          then 'remote'
+                          else 'master' end) as partition_type
+      from pg_class
+      join (select inhrelid
+              from pg_inherits
+             where inhparent in (select oid
+                                   from pg_class
+                                  where relname='asset'
+                                    and relnamespace in (select oid
+                                                           from pg_namespace
+                                                          where nspname = 'cornea'))) as c
+        on (pg_class.oid = inhrelid)
+ left join pg_trigger
+        on (c.inhrelid = pg_trigger.tgrelid)
+
+SQL
+    $sth->execute();
+    my $master;
+    my $slaves = {};
+    while(my @row = $sth->fetchrow()) {
+      if ($row[1] eq 'master') {
+        $master = $row[0];
+      }
+      else {
+        my $qsize = $dbh->prepare("select count(*)
+                                    from cornea.$row[0]_queue");
+        $qsize->execute();
+        my ($qsize_result) = $qsize->fetchrow();
+        $qsize->finish;
+        $slaves->{$row[0]} = "$qsize_result rows behind";
+      }
+    }
+    ${$rv}->{$dsn} = { master => $master, slaves => $slaves };
+  });
 }
 1;
