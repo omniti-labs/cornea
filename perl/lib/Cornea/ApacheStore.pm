@@ -13,6 +13,11 @@ my %methods = (
   'copy' => 'COPY',
 );
 
+sub mkpath {
+  my $self = shift;
+  (my $dir = shift) =~ s/\/[^\/]*$//;
+  return -d $dir or ($self->mkpath($dir) and mkdir($dir));
+}
 sub path {
   my $self = shift;
   my ($serviceId, $assetId, $repId) = @_;
@@ -49,6 +54,7 @@ sub copy {
   my @nodes = split /\s*,\s*/, $r->headers_in->get('X-Cornea-Node');
   eval {
     $path = $self->path($serviceId, $assetId, $repId);
+    $self->mkpath($path);
     die "Invalid cornea node\n" unless(@nodes);
     foreach my $node (@nodes) {
       my $url = "http://$node/$serviceId/$assetId/$repId";
@@ -96,6 +102,7 @@ sub store {
 
   eval {
     $path = $self->path($serviceId, $assetId, $repId);
+    $self->mkpath($path);
     my $file = IO::File->new(">$path") || die "cannot open $path";
     my $buffer;
     while($r->read($buffer, (1024*128)) > 0) {

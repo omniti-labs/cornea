@@ -64,7 +64,7 @@ sub distance() {
 sub api_url {
   my $self = shift;
   my $function = shift;
-  my $url = "http://" . $self->ip() . ":8091/api/$function";
+  my $url = "http://" . $self->ip() . ":8091/cornea/$function";
   $url .= "/" . join ("/", @_) if @_;
   return $url;
 }

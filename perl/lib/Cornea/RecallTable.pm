@@ -223,7 +223,7 @@ sub repInfo {
     unless ($tried++) { $self->__reconnect();  goto again; }
     die $@ if $@;
   }
-  return Cornea::RepresentationInfo->new_from_row($row);
+  return $row ? Cornea::RepresentationInfo->new_from_row($row) : undef;
 }
 
 sub repInfoDependents {

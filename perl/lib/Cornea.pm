@@ -21,6 +21,7 @@ sub submit {
 
   my $rt = Cornea::RecallTable->new();
   my $repinfo = $rt->repInfo($serviceId, 0);
+  die "No 'submission (0)' representation for service $serviceId\n";
   $repinfo->validate($serviceId, $input);
   return $self->store($input, $serviceId, $assetId, 0);
 }

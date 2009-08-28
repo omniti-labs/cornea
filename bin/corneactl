@@ -3,15 +3,16 @@ use strict;
 
 # TODO fix the lib path to be better (or install)
 use lib 'perl/lib';
+use Carp;
 use Cornea;
+use Cornea::Config;
 use Cornea::RecallTable;
 use Cornea::Utils;
 use Getopt::Long;
-use YAML;
-use Carp;
-use Cornea::Config;
+use IO::File;
 use Socket;
 use Switch;
+use YAML;
 
 our $DEBUG = 0;
 
@@ -54,6 +55,9 @@ Commands:
 
 	replication-manager
 
+	transformation-manager
+
+	submit <serviceid> <assetid> <filename>
 EOF
 }
 
@@ -77,7 +81,7 @@ switch($cmd) {
     exit_msg($rt->destroyAssetQueue($remote_node));
   }
   case 'mirror-metanode' {
-    my $remote_node = shift;
+    my $remote_node = shift or (usage() && exit -1);
     $rt->pullAssetTable($remote_node);
   }
   case 'list-nodes' {
@@ -107,6 +111,16 @@ switch($cmd) {
   }
   case 'replication-manager' {
     Cornea->new()->worker($conf->get('MQ::queue_replicate'));
+  }
+  case 'transformation-manager' {
+    Cornea->new()->worker($conf->get('MQ::queue_transform'));
+  }
+  case 'submit' {
+    scalar(@ARGV) == 3 or (usage() and exit -1);
+    my ($serviceid, $assetid, $filename) = @ARGV;
+    my $file = IO::File->new("<$filename")
+      or die "Cannot open file: '$filename'\n";
+    Cornea->new()->submit($file, $serviceid, $assetid);
   }
   else {
     usage();
