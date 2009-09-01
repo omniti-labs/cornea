@@ -2,6 +2,7 @@
 use strict;
 
 # TODO fix the lib path to be better (or install)
+use lib '/cornea/perl/lib';
 use lib 'perl/lib';
 use Carp;
 use Cornea;
@@ -10,6 +11,7 @@ use Cornea::RecallTable;
 use Cornea::Utils;
 use Getopt::Long;
 use IO::File;
+use POSIX qw/setsid/;
 use Socket;
 use Switch;
 use YAML;
@@ -109,6 +111,11 @@ switch($cmd) {
       if ($min =~ /^(\d+)\s*([GBKMT])/i);
     my $state = (($total - $used) < $min) ? 'closed' : 'open';
     my @rv;
+    if($interval) {
+      fork() && exit(0);
+      POSIX::setsid();
+      fork() && exit(0);
+    }
     while($interval) {
       @rv = $rt->updateNode($ip, { fqdn => $fqdn,
                                    state => $state,
