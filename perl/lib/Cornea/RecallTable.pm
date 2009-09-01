@@ -207,6 +207,25 @@ sub updateNode {
   return 0;
 }
 
+sub updateRepInfo {
+  my $self = shift;
+  my $service_id = shift;
+  my $rep_id = shift;
+  my $attr = shift;
+  eval "use $attr->{class};";
+  return (-1, "Cannot load $attr->{class}") if $@;
+  return $self->_2pc_generic(sub {
+    my $dsn = shift;
+    my $dbh = shift;
+    my $rv = shift;
+    my $sth = $dbh->prepare("select make_representation(?,?,?,?,?,?,?)");
+    $sth->execute($service_id, $rep_id, $attr->{name},
+                  $attr->{distance}, $attr->{count},
+                  $attr->{parent}, $attr->{class});
+    $sth->finish();
+  });
+}
+
 sub repInfo {
   my $self = shift;
   my ($serviceId, $repId) = @_;

@@ -25,11 +25,11 @@ sub new_from_row {
   bless $hash, $class;
 }
 
-sub serviceId { return shift->{serviceid}; }
-sub repId { return shift->{repid}; }
-sub name { return shift->{repname}; }
-sub transformClass { return shift->{transformclass}; }
-sub replicationCount { return shift->{replicationcount}; }
+sub serviceId { return shift->{service_id}; }
+sub repId { return shift->{representation_id}; }
+sub name { return shift->{representation_name}; }
+sub transformClass { return shift->{transform_class}; }
+sub replicationCount { return shift->{replication_count}; }
 sub distance { return shift->{distance}; }
 
 sub dependents {

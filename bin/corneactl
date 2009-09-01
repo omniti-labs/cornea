@@ -57,6 +57,8 @@ Commands:
 
 	transformation-manager
 
+	add-representation <serviceid> <repid> <name> <distance> <count> <class> [parent]
+
 	submit <serviceid> <assetid> <filename>
 EOF
 }
@@ -102,18 +104,26 @@ switch($cmd) {
     $min = ($1*Cornea::Utils::units($2))/1024
       if ($min =~ /^(\d+)\s*([GBKMT])/i);
     my $state = (($total - $used) < $min) ? 'closed' : 'open';
-    $rt->updateNode($ip, { fqdn => $fqdn,
-                           state => $state,
-                           total_storage => $total,
-                           used_storage => $used,
-                           location => $location,
-                         } );
+    exit_msg($rt->updateNode($ip, { fqdn => $fqdn,
+                                    state => $state,
+                                    total_storage => $total,
+                                    used_storage => $used,
+                                    location => $location }));
   }
   case 'replication-manager' {
     Cornea->new()->worker($conf->get('MQ::queue_replicate'));
   }
   case 'transformation-manager' {
     Cornea->new()->worker($conf->get('MQ::queue_transform'));
+  }
+  case 'add-representation' {
+    my ($service_id, $rep_id, $name, $distance, $count, $class, $parent) = @ARGV;
+    exit_msg($rt->updateRepInfo($service_id, $rep_id,
+                                { name => $name,
+                                  distance => $distance,
+                                  count => $count,
+                                  parent => $parent,
+                                  class => $class }));
   }
   case 'submit' {
     scalar(@ARGV) == 3 or (usage() and exit -1);

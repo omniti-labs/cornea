@@ -66,18 +66,18 @@ ALTER TABLE cornea.representation OWNER TO cornea;
 -- Name: make_representation(smallint, smallint, text, integer, integer, smallint, text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION make_representation(in_service_id smallint, in_repid smallint, in_name text, in_distance integer, in_count integer, in_parent smallint, in_transform text) RETURNS SETOF representation
-    LANGUAGE plpgsql STABLE
+CREATE OR REPLACE FUNCTION make_representation(in_service_id smallint, in_repid smallint, in_name text, in_distance integer, in_count integer, in_parent smallint, in_transform text) RETURNS VOID
+    LANGUAGE plpgsql
     AS $$
 DECLARE
 	v_rep representation%rowtype;
 BEGIN
-	SELECT * FROM representations WHERE service_id = $1 and representation_id = $2 INTO v_rep;
+	SELECT * FROM representation WHERE service_id = $1 and representation_id = $2 INTO v_rep;
 	IF NOT FOUND THEN
-		INSERT INTO representations (representation_id, service_id, representation_name, distance, representation_count, byproduct_of, transform_class)
+		INSERT INTO representation (representation_id, service_id, representation_name, distance, representation_count, byproduct_of, transform_class)
 		VALUES($2, $1, $3, $4, $5, $6, $7);
 	ELSE
-		UPDATE representations SET
+		UPDATE representation SET
 		representation_name = $3, distance = $4, representation_count = $5, byproduct_of = $6, transform_class = $7 WHERE representation_id = $2 and service_id = $1;
 	END IF;
 END
