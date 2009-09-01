@@ -64,6 +64,7 @@ sub store {
         last; # break out and recalc so that distance is right
       }
       else {
+        print STDERR "Failed copy to " . $n->fqdn . "\n";
         $T->remove($n);
       }
     }
@@ -71,14 +72,16 @@ sub store {
   }
 
   if ($S->count < $repinfo->replicationCount) {
+    print STDERR "Replica count not reached.\n" if ($main::DEBUG);
     my $config = Cornea::Config->new();
-    if($config->must_be_complete()) {
+    if($config->get('Replication::Lazy')) {
       foreach my $n ($S->items) { $n->delete($serviceId, $assetId, $repId); }
       die "Failed to reach required replication count";
     }
     else {
       my $copies_needed = $repinfo->replicationCount - $S->count;
-      my $nodelist = join(',', map { $S->id() } ($S->items()));
+      my $nodelist = join(',', map { $_->id() } ($S->items()));
+      print STDERR "Queueing replication request\n" if ($main::DEBUG);
       if (not Cornea::Queue::enqueue('REPLICATE',
                                      { 'serviceId' => $serviceId,
                                        'assetId' => $assetId,
@@ -96,7 +99,7 @@ sub store {
   }
 
   if (scalar($repinfo->dependents) > 0) {
-    my $nodelist = join(',', map { $S->id() } ($S->items()));
+    my $nodelist = join(',', map { $_->id() } ($S->items()));
     if (not Cornea::Queue::enqueue('PROCESS',
                                    { 'serviceId' => $serviceId,
                                      'assetId' => $assetId,
@@ -207,7 +210,7 @@ sub replicate {
 
   # If the following updates fail, we only undo the strage changeset $C
   if ($copies > 0) {
-    my $nodelist = join(',', map { $C->id() } ($C->items()));
+    my $nodelist = join(',', map { $_->id() } ($C->items()));
     if (not Cornea::Queue::enqueue('REPLICATE',
                                    { 'serviceId' => $serviceId,
                                      'assetId' => $assetId,

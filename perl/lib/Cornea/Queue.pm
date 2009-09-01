@@ -4,6 +4,8 @@ use YAML ();
 use Cornea::Config;
 use Net::Stomp;
 
+my $_g_cornea_queue;
+
 sub __reconnect {
   my $self = shift;
   my $config = Cornea::Config->new();
@@ -43,7 +45,16 @@ sub new {
 }
 
 sub enqueue {
-  my $self = shift;
+  # enqueue can act as both a method and a static class function
+  my $self;
+
+  if(UNIVERSAL::isa($_[0], __PACKAGE__)) {
+    $self = shift;
+  }
+  else {
+    $_g_cornea_queue ||= __PACKAGE__->new();
+    $self = $_g_cornea_queue;
+  }
   my $retried = 0;
   my $config = Cornea::Config->new();
   my ($op, $detail) = @_;
@@ -63,6 +74,7 @@ sub enqueue {
 }
 
 sub dequeue {
+  # dequeue only acts as a method because it must be connected to a queue.
   my $self = shift;
   my $sub = shift;
  

@@ -88,6 +88,7 @@ sub put {
     my $ips = join ',', map { $_->ip() } ($source->items());
     $curl->setopt(CURLOPT_URL, $url);
     $curl->setopt(CURLOPT_HEADER, [ "X-Cornea-Node: $ips" ]);
+    $curl->setopt(CURLOPT_CUSTOMREQUEST, "COPY");
     my $retcode = $curl->perform();
     return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
     return 0;

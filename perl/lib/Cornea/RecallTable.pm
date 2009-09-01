@@ -41,12 +41,12 @@ sub insert {
   my $self = shift;
   my ($serviceId, $assetId, $repId, $snl) = @_;
   my $tried = 0;
-  die 'bad parameters' unless UNIVERSAL::ISA($snl, 'Cornea::StorageNodeList');
-  my $snl_arr = '{' . join(',', map { $_->storeagenodeid() }
+  die 'bad parameters' unless UNIVERSAL::isa($snl, 'Cornea::StorageNodeList');
+  my $snl_arr = '{' . join(',', map { $_->id() }
                                     ($snl->items())) . '}'; 
  again:
   eval {
-    my $sth = $self->{dbh}->prepare("select make_asset(?,?,?,?::int[])");
+    my $sth = $self->{dbh}->prepare("select make_asset(?,?,?,?::smallint[])");
     $sth->execute($serviceId, $assetId, $repId, $snl_arr);
     $sth->finish();
   };

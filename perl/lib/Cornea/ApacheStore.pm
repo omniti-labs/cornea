@@ -6,6 +6,7 @@ use Apache2::RequestRec ();
 use Apache2::RequestIO ();
 use APR::Table;
 use Cornea::Config;
+use IO::File;
 use WWW::Curl::Easy;
 
 my %methods = (
@@ -17,7 +18,9 @@ my %methods = (
 sub mkpath {
   my $self = shift;
   (my $dir = shift) =~ s/\/[^\/]*$//;
-  return -d $dir or ($self->mkpath($dir) and mkdir($dir));
+  return 1 if -d $dir;
+  $self->mkpath($dir);
+  mkdir($dir);
 }
 sub path {
   my $self = shift;
