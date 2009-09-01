@@ -116,14 +116,14 @@ switch($cmd) {
       POSIX::setsid();
       fork() && exit(0);
     }
-    while($interval) {
+    do {
       @rv = $rt->updateNode($ip, { fqdn => $fqdn,
                                    state => $state,
                                    total_storage => $total,
                                    used_storage => $used,
                                    location => $location });
       sleep($interval);
-    }
+    } while($interval);
     exit_msg(@rv);
   }
   case 'replication-manager' {
