@@ -24,6 +24,11 @@ sub exit_msg {
   print "$message\n";
   exit($exit_code);
 }
+sub daemonize {
+  fork() && exit(0);
+  POSIX::setsid();
+  fork() && exit(0);
+}
 
 my $conf_file;
 my $interval;
@@ -90,6 +95,7 @@ switch($cmd) {
   }
   case 'mirror-metanode' {
     my $remote_node = shift or (usage() && exit -1);
+    daemonize() unless $DEBUG;
     $rt->pullAssetTable($remote_node);
   }
   case 'list-nodes' {
@@ -111,11 +117,7 @@ switch($cmd) {
       if ($min =~ /^(\d+)\s*([GBKMT])/i);
     my $state = (($total - $used) < $min) ? 'closed' : 'open';
     my @rv;
-    if($interval) {
-      fork() && exit(0);
-      POSIX::setsid();
-      fork() && exit(0);
-    }
+    daemonize() if($interval and not $DEBUG);
     do {
       @rv = $rt->updateNode($ip, { fqdn => $fqdn,
                                    state => $state,
