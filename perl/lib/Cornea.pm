@@ -21,7 +21,7 @@ sub submit {
 
   my $rt = Cornea::RecallTable->new();
   my $repinfo = $rt->repInfo($serviceId, 0);
-  die "No 'submission (0)' representation for service $serviceId\n";
+  die "No 'submission (0)' representation for service $serviceId\n" unless $repinfo;
   $repinfo->validate($serviceId, $input);
   return $self->store($input, $serviceId, $assetId, 0);
 }
@@ -46,11 +46,12 @@ sub store {
       last;
     }
     else {
+      print STDERR "Failed put to " . $n->fqdn . "\n";
       $N->remove($n);
     }
   }
 
-  die "Only one node available" if($S->count == 0);
+  die "No nodes available" if($S->count == 0);
 
   while($S->count < $repinfo->replicationCount) {
     my $T = $N->copy();

@@ -24,7 +24,9 @@ sub exit_msg {
 }
 
 my $conf_file;
+my $interval;
 GetOptions("c=s" => \$conf_file,
+           "i=i" => \$interval,
            "d" => \$DEBUG);
 my $conf = Cornea::Config->new($conf_file);
 
@@ -51,7 +53,9 @@ Commands:
 
 	list-nodes
 
-	update-node [fqdn location]
+	update-node <fqdn> <location>
+
+	update-node [-i <seconds>]
 
 	replication-manager
 
@@ -104,11 +108,16 @@ switch($cmd) {
     $min = ($1*Cornea::Utils::units($2))/1024
       if ($min =~ /^(\d+)\s*([GBKMT])/i);
     my $state = (($total - $used) < $min) ? 'closed' : 'open';
-    exit_msg($rt->updateNode($ip, { fqdn => $fqdn,
-                                    state => $state,
-                                    total_storage => $total,
-                                    used_storage => $used,
-                                    location => $location }));
+    my @rv;
+    while($interval) {
+      @rv = $rt->updateNode($ip, { fqdn => $fqdn,
+                                   state => $state,
+                                   total_storage => $total,
+                                   used_storage => $used,
+                                   location => $location });
+      sleep($interval);
+    }
+    exit_msg(@rv);
   }
   case 'replication-manager' {
     Cornea->new()->worker($conf->get('MQ::queue_replicate'));
