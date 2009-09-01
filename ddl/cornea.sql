@@ -55,7 +55,7 @@ CREATE TABLE representation (
     representation_name text NOT NULL,
     distance integer NOT NULL,
     representation_count integer NOT NULL,
-    by_product_of integer NOT NULL,
+    byproduct_of smallint,
     transform_class text NOT NULL
 );
 
@@ -63,30 +63,54 @@ CREATE TABLE representation (
 ALTER TABLE cornea.representation OWNER TO cornea;
 
 --
--- Name: get_representation(integer, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
+-- Name: make_representation(smallint, smallint, text, integer, integer, smallint, text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION get_representation(in_service_id integer, in_repid integer) RETURNS SETOF representation
+CREATE OR REPLACE FUNCTION make_representation(in_service_id smallint, in_repid smallint, in_name text, in_distance integer, in_count integer, in_parent smallint, in_transform text) RETURNS SETOF representation
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+	v_rep representation%rowtype;
+BEGIN
+	SELECT * FROM representations WHERE service_id = $1 and representation_id = $2 INTO v_rep;
+	IF NOT FOUND THEN
+		INSERT INTO representations (representation_id, service_id, representation_name, distance, representation_count, byproduct_of, transform_class)
+		VALUES($2, $1, $3, $4, $5, $6, $7);
+	ELSE
+		UPDATE representations SET
+		representation_name = $3, distance = $4, representation_count = $5, byproduct_of = $6, transform_class = $7 WHERE representation_id = $2 and service_id = $1;
+	END IF;
+END
+$$;
+
+
+ALTER FUNCTION cornea.make_representation(in_service_id smallint, in_repid smallint, in_name text, in_distance integer, in_count integer, in_parent smallint, in_transform text) OWNER TO cornea;
+
+--
+-- Name: get_representation(smallint, smallint); Type: FUNCTION; Schema: cornea; Owner: cornea
+--
+
+CREATE OR REPLACE FUNCTION get_representation(in_service_id smallint, in_repid smallint) RETURNS SETOF representation
     LANGUAGE sql STABLE
     AS $$
   	select * from representation where service_id = $1 and representation_id = $2;
 $$;
 
 
-ALTER FUNCTION cornea.get_representation(in_service_id integer, in_repid integer) OWNER TO cornea;
+ALTER FUNCTION cornea.get_representation(in_service_id smallint, in_repid smallint) OWNER TO cornea;
 
 --
--- Name: get_representation_dependents(integer, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
+-- Name: get_representation_dependents(smallint, smallint); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION get_representation_dependents(in_service_id integer, in_repid integer) RETURNS SETOF representation
+CREATE OR REPLACE FUNCTION get_representation_dependents(in_service_id smallint, in_repid smallint) RETURNS SETOF representation
     LANGUAGE sql STABLE
     AS $$
 	select * from representation where service_id = $1 and byproduct_of = $2;
 $$;
 
 
-ALTER FUNCTION cornea.get_representation_dependents(in_service_id integer, in_repid integer) OWNER TO cornea;
+ALTER FUNCTION cornea.get_representation_dependents(in_service_id smallint, in_repid smallint) OWNER TO cornea;
 
 --
 -- Name: storage_node; Type: TABLE; Schema: cornea; Owner: cornea; Tablespace: 
