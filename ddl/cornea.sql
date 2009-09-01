@@ -32,10 +32,12 @@ CREATE TYPE storagestate AS ENUM('open','closed','offline','decommissioned');
 -- Name: get_asset_location(integer, bigint, integer); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION get_asset_location(in_serviceid integer, in_assetid bigint, in_repid integer) RETURNS smallint[]
-    LANGUAGE sql STABLE
-    AS $$
-  	select storage_location from asset where service_id=$1 and asset_id=$2 and representation_id=$3;
+CREATE OR REPLACE FUNCTION get_asset_location(in_service_id integer, in_asset_id bigint, in_representation_id integer) 
+RETURNS SETOF storage_node_info 
+LANGUAGE sql STABLE
+AS $$
+	SELECT storage_node_info.* FROM storage_node_info JOIN asset ON (storage_node_id =ANY(storage_location)) 
+		WHERE service_id=$1 and asset_id=$2 and representation_id=$3;
 $$;
 
 
@@ -130,16 +132,16 @@ CREATE TABLE storage_node (
 
 ALTER TABLE cornea.storage_node OWNER TO cornea;
 
+CREATE OR REPLACE VIEW storage_node_info AS SELECT storage_node_id, state as raw_state, case when state = 'open' and modified_at < current_timestamp - '60 seconds'::interval then 'truant' else state end as state, total_storage, used_storage, ip, fqdn, location, modified_at, (extract(epoch from current_timestamp) - extract(epoch from modified_at))::bigint as age from storage_node; 
 --
 -- Name: get_storage_nodes_by_state(text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION get_storage_nodes_by_state(in_state storagestate) RETURNS SETOF storage_node
+CREATE OR REPLACE FUNCTION get_storage_nodes(in_state storagestate[]) RETURNS SETOF storage_node_info
     LANGUAGE sql STABLE
     AS $$
-  	select * from storage_node where state=$1 or $1 is null;
+  	select * from storage_node_info where state=any($1) or $1 is null;
 $$;
-
 
 ALTER FUNCTION cornea.get_storage_nodes_by_state(in_state text) OWNER TO cornea;
 
@@ -151,7 +153,7 @@ CREATE OR REPLACE FUNCTION make_asset(in_service_id integer, in_asset_id bigint,
     LANGUAGE sql
     AS $$
 	-- remove any existing copies, ensures that this node becomes "owner" of the asset 
-	delete from asset where service_id = $1 and asset_id = $2 and storage_location = $4; 
+	delete from asset where service_id = $1 and asset_id = $2 and representation_id = $3;
   	insert into asset(service_id,asset_id,representation_id,storage_location) values ($1, $2, $3, $4);
 $$;
 
