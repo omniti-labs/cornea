@@ -137,7 +137,7 @@ sub handler {
   my ($method, @args) = split /\//, $1;
   # only allow the right HTTP method
   return $self->xml($r, 403, '<error>'.$r->method().' disallowed</error>')
-    unless ($r->method() eq $methods{'store'});
+    unless ($r->method() eq $methods{$method});
   # do it.
   return $self->$method($r, @args);
 }

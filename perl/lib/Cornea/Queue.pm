@@ -3,6 +3,7 @@ use strict;
 use YAML ();
 use Cornea::Config;
 use Net::Stomp;
+use Digest::MD5 qw/md5_hex/;
 
 my $_g_cornea_queue;
 
@@ -64,19 +65,31 @@ sub enqueue {
   my $config = Cornea::Config->new();
   my ($op, $detail) = @_;
   print STDERR "enqueue($op)\n" if $main::DEBUG;
+  my $destination = $config->get("MQ::queue_" . lc($op));
   my $payload = YAML::Dump($op, $detail);
+  my $fid = md5_hex($payload);
   while(1) {
-    last unless eval {
-      $self->{stomp}->send(
-        { destination => $config->get("MQ::queue_" . lc($op)),
+    my $response = undef;
+    my $frame = {};
+    eval {
+      $response = $self->{stomp}->send(
+        { destination => $destination,
+          exchange => '',
+         'delivery-mode' => 2,
+          receipt => $fid,
           body => $payload }
       );
-    } || $@;
+      $frame = $self->{stomp}->receive_frame();
+    };
+    return 1
+      if($frame->{'command'} eq 'RECEIPT' and
+         $frame->{'headers'}->{'receipt-id'} eq $fid);
+    print STDERR $@ if $@;
     last if ($retried);
     $self->__reconnect();
     $retried = 1;
   }
-  return 1;
+  return 0;
 }
 
 sub dequeue {
