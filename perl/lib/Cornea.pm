@@ -225,7 +225,7 @@ sub replicate {
       }
       else {
         $T->remove($n);
-        print STDERR "COPY failed\n" if $main::DEBUG;
+        print STDERR "COPY failed: $data\n" if $main::DEBUG;
       }
     }
     last if($T->count == 0); # can't find adequate working nodes

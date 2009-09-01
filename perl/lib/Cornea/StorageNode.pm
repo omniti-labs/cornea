@@ -94,10 +94,11 @@ sub put {
     my $curl = new WWW::Curl::Easy;
     my $ips = join ',', map { $_->ip() } ($source->items());
     $curl->setopt(CURLOPT_URL, $url);
-    $curl->setopt(CURLOPT_HEADER, [ "X-Cornea-Node: $ips" ]);
+    $curl->setopt(CURLOPT_HTTPHEADER, [ "X-Cornea-Node: $ips" ]);
     $curl->setopt(CURLOPT_CUSTOMREQUEST, "COPY");
     $curl->setopt(CURLOPT_FILE, \$response_data);
     $curl->setopt(CURLOPT_WRITEFUNCTION, \&_curl_help_write);
+    $curl->setopt(CURLOPT_WRITEHEADER, undef);
     my $retcode = $curl->perform();
     return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
     return (0, $response_data);
