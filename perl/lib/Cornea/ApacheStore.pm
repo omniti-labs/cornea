@@ -20,7 +20,7 @@ sub mkpath {
   (my $dir = shift) =~ s/\/[^\/]*$//;
   return 1 if -d $dir;
   $self->mkpath($dir);
-  mkdir($dir);
+  mkdir($dir) || die "cannot mkdir($dir): $!\n";
 }
 sub path {
   my $self = shift;
@@ -62,7 +62,7 @@ sub copy {
     die "Invalid cornea node\n" unless(@nodes);
     foreach my $node (@nodes) {
       my $url = "http://$node/$serviceId/$assetId/$repId";
-      my $file = IO::File->new(">$path");
+      my $file = IO::File->new(">$path") || die "cannot open $path: $!\n";
       my $curl = WWW::Curl::Easy->new();
       $curl->setopt(CURLOPT_URL, $url);
       $curl->setopt(CURLOPT_FILE, $file);
@@ -74,6 +74,8 @@ sub copy {
       $file->close();
       $errbuf = $curl->errbuf;
       my $code = $curl->getinfo(CURLINFO_HTTP_CODE);
+      $errbuf = "copy from source: $code" unless $code == 200;
+      $errbuf = "zero length file\n" if -z $path;
       if ($code == 200 and -e $path and not -z $path) {
         $copied = 1;
         last;
