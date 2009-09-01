@@ -23,7 +23,7 @@ sub __reconnect {
       $stomp = Net::Stomp->new( { hostname => $hostname,
                                      port => $port });
       $stomp->connect( { login => $config->get("MQ::login"),
-                         passcode => $config->get("MQ::passcode") } ) || 
+                         passcode => $config->get("MQ::passcode") }) ||
         die "could not connect to stomp on $hostname\n";
     };
     last unless $@;
@@ -31,7 +31,12 @@ sub __reconnect {
   }
   if($stomp) {
     foreach (@{$self->{queues}}) {
-      $stomp->subscribe( { destination => $_, ack => 'client' } );
+      $stomp->subscribe( {
+        exchange => '',
+        destination => "$_",
+       'auto-delete' => 'false',
+        durable => 'true', ack => 'client',
+      } );
     }
   }
   $self->{stomp} = $stomp;
