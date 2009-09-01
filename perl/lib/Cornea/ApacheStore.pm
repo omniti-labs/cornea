@@ -5,6 +5,7 @@ use Apache2::Const qw ( OK DECLINED NOT_FOUND );
 use Apache2::RequestRec ();
 use Apache2::RequestIO ();
 use APR::Table;
+use Cornea::Config;
 use WWW::Curl::Easy;
 
 my %methods = (
