@@ -63,6 +63,7 @@ sub enqueue {
   my $retried = 0;
   my $config = Cornea::Config->new();
   my ($op, $detail) = @_;
+  print STDERR "enqueue($op)\n" if $main::DEBUG;
   my $payload = YAML::Dump($op, $detail);
   while(1) {
     last unless eval {
@@ -85,9 +86,8 @@ sub dequeue {
  
   my $frame = $self->{stomp}->receive_frame; 
   my ($op, $detail) = YAML::Load($frame->body);
-  if($sub->($op, $detail)) {
-    $self->{stomp}->ack( { frame => $frame } );
-  }
+  $sub->($op, $detail);
+  $self->{stomp}->ack( { frame => $frame } );
 }
 
 sub worker {

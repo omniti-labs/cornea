@@ -39,14 +39,17 @@ sub store {
 
   my $S = Cornea::StorageNodeList->new();
   foreach my $n ($N->items) {
-    if ($n->put($input,$serviceId,$assetId,$repId)) {
+    print STDERR "Attempting PUT to " . $n->fqdn . "\n" if $main::DEBUG;
+    my ($rv, $data) = $n->put($input, $serviceId, $assetId, $repId);
+    if ($rv) {
       $S->add($n);
       $N->remove($n);
       $gold = $n;
+      print STDERR "PUT succeeded (is gold)\n" if $main::DEBUG;
       last;
     }
     else {
-      print STDERR "Failed put to " . $n->fqdn . "\n";
+      print STDERR "Failed put to " . $n->fqdn . "\n" if $main::DEBUG;
       $N->remove($n);
     }
   }
@@ -58,13 +61,16 @@ sub store {
     $T->removeWithin($S, $repinfo->distance);
     last if($T->count == 0); # can't find adequate nodes
     foreach my $n ($T->items) {
-      if ($n->put($gold, $serviceId, $assetId, $repId)) {
+      print STDERR "Attempting COPY to " . $n->fqdn . "\n" if $main::DEBUG;
+      my ($rv, $data) = $n->put($gold, $serviceId, $assetId, $repId);
+      if ($rv) {
         $S->add($n);
         $N->remove($n);
+        print STDERR "COPY succeeded\n" if $main::DEBUG;
         last; # break out and recalc so that distance is right
       }
       else {
-        print STDERR "Failed copy to " . $n->fqdn . "\n";
+        print STDERR "Failed copy to " . $n->fqdn . "\n" if $main::DEBUG;
         $T->remove($n);
       }
     }
@@ -163,6 +169,7 @@ sub process {
       }
     }
   }
+  return 1;
 }
 sub replicate {
   my $self = shift;
@@ -177,32 +184,48 @@ sub replicate {
 
   my $AvailableNodes = $rt->getNodes(['open','closed']);
 
-  my $S = Cornea::StoreNodeList->new();
+  my $S = Cornea::StorageNodeList->new();
   # Find where it is, based on the work order.
   my %node_map;
   foreach (@nodeIds) { $node_map{$_}++; }
   foreach ($AvailableNodes->items()) { $S->add($_) if ($node_map{$_->id()}); }
 
   my $N = $rt->getNodes('open');
-  $S = $rt->find($serviceId, $assetId, $repId) unless ($S->items() == 0);
+  if($S->items() == 0) {
+    # We got a blind: "I don't think I have enough replicas" message
+    # we find the copies and then determine how many we need.
+    $S = $rt->find($serviceId, $assetId, $repId) if ($S->items() == 0);
+    $S->remove(sub { $_[0]->state() eq 'decommissioned' });
+    $copies = $repinfo->replicationCount - scalar($S->items);
+  }
   my $C = Cornea::StorageNodeList->new();
   foreach my $n ($S->items) {
     $N->remove($n);
   }
-  while ($copies > 0) {
+  print STDERR "($serviceId,$assetId,$repId) stored: ".scalar($S->items).
+               ", others: ".scalar($N->items).
+               ", copies needed: $copies\n" if $main::DEBUG;
+  while ($S->items() && $copies > 0) {
     my $T = $N->copy();
     $T->removeWithin($S, $repinfo->distance);
-    last if($T->count == 0); # can't find adequate nodes
+    if($T->count == 0) { # can't find adequate nodes
+      print STDERR "Cannot find enough nodes with ".$repinfo->distance."\n";
+      last;
+    }
     foreach my $n ($T->items) {
-      if ($n->put($S, $serviceId, $assetId, $repId)) {
+      print STDERR "Attempting COPY to " . $n->fqdn . "\n" if $main::DEBUG;
+      my ($rv, $data) = $n->put($S, $serviceId, $assetId, $repId);
+      if ($rv) {
         $S->add($n);
         $C->add($n);
         $N->remove($n);
         $copies--;
+        print STDERR "COPY succeeded\n" if $main::DEBUG;
         last; # break out and recalc so that distance is right
       }
       else {
         $T->remove($n);
+        print STDERR "COPY failed\n" if $main::DEBUG;
       }
     }
     last if($T->count == 0); # can't find adequate working nodes
@@ -210,7 +233,7 @@ sub replicate {
 
   # If the following updates fail, we only undo the strage changeset $C
   if ($copies > 0) {
-    my $nodelist = join(',', map { $_->id() } ($C->items()));
+    my $nodelist = join(',', map { $_->id() } ($S->items()));
     if (not Cornea::Queue::enqueue('REPLICATE',
                                    { 'serviceId' => $serviceId,
                                      'assetId' => $assetId,
@@ -227,6 +250,7 @@ sub replicate {
     foreach my $n ($C->items) { $n->delete($serviceId, $assetId, $repId); }
     die "Failed to record metadata";
   }
+  return 1;
 }
 
 
@@ -238,9 +262,10 @@ sub worker {
     sub {
       my $op = shift;
       my $detail = shift;
-      if    ($op eq 'PROCESS')    { $self->process($detail); }
-      elsif ($op eq 'REPLICATE')  { $self->replicate($detail); }
+      if    ($op eq 'PROCESS')    { return $self->process($detail); }
+      elsif ($op eq 'REPLICATE')  { return $self->replicate($detail); }
       else                        { $self->log("UNKNOWNE Queue op($op)\n"); }
+      return 0;
     }
   );
 }

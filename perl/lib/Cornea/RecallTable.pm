@@ -60,7 +60,7 @@ sub insert {
 sub find {
   my $self = shift;
   my ($serviceId, $assetId, $repId) = @_;
-  my $sth = $self->{dbh}->prepare("select get_asset_location(?,?,?)");
+  my $sth = $self->{dbh}->prepare("select * from get_asset_location(?,?,?)");
   my $tried = 0;
   my $C;
  again:

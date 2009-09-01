@@ -17,7 +17,14 @@ sub items {
 sub remove {
   my $self = shift;
   my $node = shift;
-  delete $self->{$node->fqdn()};
+  if (ref $node eq 'CODE') {
+    foreach ($self->items()) {
+      $self->remove($_) if $node->($_);
+    }
+  }
+  else {
+    delete $self->{$node->fqdn()};
+  }
 }
 
 sub add {

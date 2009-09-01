@@ -61,6 +61,12 @@ sub distance() {
   return $dist;
 }
 
+sub _curl_help_write {
+  my ($data, $d) = @_;
+  $$d .= $data;
+  return length($data);
+}
+
 sub api_url {
   my $self = shift;
   my $function = shift;
@@ -76,6 +82,7 @@ sub put {
   my $self = shift;
   my $source = shift;
   my ($serviceId,$assetId,$repId) = @_;
+  my $response_data = '';
 
   # Transform nodes into lists.
   $source = Cornea::StorageNodeList->new($source)
@@ -89,9 +96,11 @@ sub put {
     $curl->setopt(CURLOPT_URL, $url);
     $curl->setopt(CURLOPT_HEADER, [ "X-Cornea-Node: $ips" ]);
     $curl->setopt(CURLOPT_CUSTOMREQUEST, "COPY");
+    $curl->setopt(CURLOPT_FILE, \$response_data);
+    $curl->setopt(CURLOPT_WRITEFUNCTION, \&_curl_help_write);
     my $retcode = $curl->perform();
     return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
-    return 0;
+    return (0, $response_data);
   }
   else {
     # This is an actual asset
@@ -106,11 +115,13 @@ sub put {
     $curl->setopt(CURLOPT_INFILESIZE, $len);
     $curl->setopt(CURLOPT_UPLOAD, 1);
     $curl->setopt(CURLOPT_CUSTOMREQUEST, "PUT");
+    $curl->setopt(CURLOPT_FILE, \$response_data);
+    $curl->setopt(CURLOPT_WRITEFUNCTION, \&_curl_help_write);
     $curl->setopt(CURLOPT_FAILONERROR, 1);
   
     my $retcode = $curl->perform();
     return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
-    return 0;
+    return (0, $response_data);
   }
 }
 
