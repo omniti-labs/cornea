@@ -54,7 +54,7 @@ CREATE TABLE representation (
     service_id smallint NOT NULL,
     representation_name text NOT NULL,
     distance integer NOT NULL,
-    representation_count integer NOT NULL,
+    replication_count integer NOT NULL,
     byproduct_of smallint,
     transform_class text NOT NULL
 );
@@ -74,11 +74,11 @@ DECLARE
 BEGIN
 	SELECT * FROM representation WHERE service_id = $1 and representation_id = $2 INTO v_rep;
 	IF NOT FOUND THEN
-		INSERT INTO representation (representation_id, service_id, representation_name, distance, representation_count, byproduct_of, transform_class)
+		INSERT INTO representation (representation_id, service_id, representation_name, distance, replication_count, byproduct_of, transform_class)
 		VALUES($2, $1, $3, $4, $5, $6, $7);
 	ELSE
 		UPDATE representation SET
-		representation_name = $3, distance = $4, representation_count = $5, byproduct_of = $6, transform_class = $7 WHERE representation_id = $2 and service_id = $1;
+		representation_name = $3, distance = $4, replication_count = $5, byproduct_of = $6, transform_class = $7 WHERE representation_id = $2 and service_id = $1;
 	END IF;
 END
 $$;
