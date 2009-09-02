@@ -75,8 +75,7 @@ sub copy {
       $errbuf = $curl->errbuf;
       my $code = $curl->getinfo(CURLINFO_HTTP_CODE);
       $errbuf = "copy from source: $code" unless $code == 200;
-      $errbuf = "zero length file\n" if -z $path;
-      if ($code == 200 and -e $path and not -z $path) {
+      if ($code == 200 and -e $path) {
         $copied = 1;
         last;
       }

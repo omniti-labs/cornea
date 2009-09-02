@@ -95,6 +95,7 @@ sub put {
     my $ips = join ',', map { $_->ip() } ($source->items());
     $curl->setopt(CURLOPT_URL, $url);
     $curl->setopt(CURLOPT_HTTPHEADER, [ "X-Cornea-Node: $ips" ]);
+    print STDERR "COPY $url (X-Cornea-Node: $ips)\n" if $main::DEBUG;
     $curl->setopt(CURLOPT_CUSTOMREQUEST, "COPY");
     $curl->setopt(CURLOPT_FILE, \$response_data);
     $curl->setopt(CURLOPT_WRITEFUNCTION, \&_curl_help_write);

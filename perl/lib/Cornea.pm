@@ -70,7 +70,7 @@ sub store {
         last; # break out and recalc so that distance is right
       }
       else {
-        print STDERR "Failed copy to " . $n->fqdn . "\n" if $main::DEBUG;
+        print STDERR "Failed copy to " . $n->fqdn . "\n$data\n" if $main::DEBUG;
         $T->remove($n);
       }
     }
