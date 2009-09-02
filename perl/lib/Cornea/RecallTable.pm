@@ -2,6 +2,9 @@ package Cornea::RecallTable;
 use strict;
 use Cornea::Config;
 use Cornea::Utils;
+use Memcached::libmemcached qw(:memcached_behavior :memcached_server_distribution
+                               memcached_create memcached_behavior_set
+                               memcached_server_add memcached_set);
 use YAML;
 use DBI;
 
@@ -54,6 +57,7 @@ sub insert {
     unless ($tried++) { $self->__reconnect();  goto again; }
     die $@ if $@;
   }
+  $self->asset_cache_replace(@_);
   return 1;
 }
 
@@ -547,5 +551,27 @@ SQL
     }
     ${$rv}->{$dsn} = { master => $master, slaves => $slaves };
   });
+}
+
+my $_g_mc;
+my $_g_mc_id = '';
+
+sub asset_cache_replace {
+  my $self = shift;
+  my ($serviceId, $assetId, $repId, $snl) = @_;
+  my $all = $self->getNodes(['open','closed','truant']);
+  my @nodes = sort (map { $_->ip() } ($all->items()));
+  my $id = join(',', @nodes);
+  if (!$_g_mc or $_g_mc_id ne $id) {
+    $_g_mc_id = $id;
+    $_g_mc = memcached_create();
+    memcached_behavior_set($_g_mc, MEMCACHED_BEHAVIOR_DISTRIBUTION(),
+                           MEMCACHED_DISTRIBUTION_CONSISTENT());
+    foreach my $ip (@nodes) {
+      memcached_server_add($_g_mc, $ip, 11211);
+    }
+  }
+  memcached_set($_g_mc, "$serviceId-$assetId-$repId",
+                join(',', map { $_->id() } ($snl->items())));
 }
 1;
