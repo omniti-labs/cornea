@@ -101,29 +101,30 @@ sub put {
     $curl->setopt(CURLOPT_WRITEFUNCTION, \&_curl_help_write);
     $curl->setopt(CURLOPT_WRITEHEADER, undef);
     my $retcode = $curl->perform();
-    return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
-    return (0, $response_data);
+    my $code = $curl->getinfo(CURLINFO_HTTP_CODE);
+    return 1 if($retcode == 0 && $code == 200);
+    return (0, "$code: $response_data");
   }
   else {
     # This is an actual asset
     my $url = $self->api_url('store', @_);
     my $curl = new WWW::Curl::Easy;
-    $source->sysseek(0,2);
+    $source->seek(0,2) || die "seek failed\n";
     my $len = $source->tell();
-    $source->sysseek(0,0);
+    $source->seek(0,0) || die "seek failed\n";
     $curl->setopt(CURLOPT_URL, $url);
     $curl->setopt(CURLOPT_READFUNCTION,
-                  sub { my $buf; $source->sysread($buf, $_[0]); return $buf } );
+                  sub { my $buf; $source->read($buf, $_[0]); return $buf; } );
     $curl->setopt(CURLOPT_INFILESIZE, $len);
     $curl->setopt(CURLOPT_UPLOAD, 1);
     $curl->setopt(CURLOPT_CUSTOMREQUEST, "PUT");
     $curl->setopt(CURLOPT_FILE, \$response_data);
     $curl->setopt(CURLOPT_WRITEFUNCTION, \&_curl_help_write);
-    $curl->setopt(CURLOPT_FAILONERROR, 1);
   
     my $retcode = $curl->perform();
-    return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);
-    return (0, $response_data);
+    my $code = $curl->getinfo(CURLINFO_HTTP_CODE);
+    return 1 if($retcode == 0 && $code == 200);
+    return (0, "$code: $response_data");
   }
 }
 
@@ -134,7 +135,6 @@ sub delete {
   my $curl = new WWW::Curl::Easy;
   $curl->setopt(CURLOPT_URL, $url);
   $curl->setopt(CURLOPT_CUSTOMREQUEST, "DELETE");
-  $curl->setopt(CURLOPT_FAILONERROR, 1);
 
   my $retcode = $curl->perform();
   return 1 if($retcode == 0 && $curl->getinfo(CURLINFO_HTTP_CODE) == 200);

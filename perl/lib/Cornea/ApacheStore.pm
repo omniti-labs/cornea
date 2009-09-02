@@ -109,19 +109,20 @@ sub store {
     $path = $self->path($serviceId, $assetId, $repId);
     $self->mkpath($path);
     my $file = IO::File->new(">$path") || die "cannot open $path";
-    my $buffer;
-    while($r->read($buffer, (1024*128)) > 0) {
-      if($file->write($buffer) != length($buffer)) {
-        die "short write on $path"
+    my ($rlen, $wlen, $buffer);
+    while(($rlen = $r->read($buffer, (1024*128))) > 0) {
+      if(($wlen = $file->syswrite($buffer, $rlen)) != $rlen) {
+        die "short write ($wlen != $rlen) on $path\n";
       }
     }
     $file->flush();
     $file->close();
   };
   if($@) {
+    my $error = $@;
+    print STDERR "$@";
     unlink($path) if $path;
-    print STDERR $@;
-    return $self->xml($r, 500, "<error>$@</error>");
+    return $self->xml($r, 500, "<error>$error</error>");
   }
   return $self->xml($r, 200, "<success />");
 }

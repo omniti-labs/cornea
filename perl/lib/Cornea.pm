@@ -49,7 +49,7 @@ sub store {
       last;
     }
     else {
-      print STDERR "Failed put to " . $n->fqdn . "\n" if $main::DEBUG;
+      print STDERR "Failed put to " . $n->fqdn . "\n$data\n" if $main::DEBUG;
       $N->remove($n);
     }
   }
