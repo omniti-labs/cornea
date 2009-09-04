@@ -8,15 +8,21 @@
 #include <apr_strings.h>
 #include <apr_thread_mutex.h>
 #include <apr_reslist.h>
+#include <apr_md5.h>
 #include <libpq-fe.h>
 #include <libmemcached/memcached.h>
 
 module cornea_router_module;
 
 typedef struct {
+  char *doskey;
   int n_dsn;
   char **dsn;
   apr_reslist_t **reslist;
+  int min;
+  int smax;
+  int hmax;
+  int ttl;
 } cornea_router_config_t;
 
 typedef struct {
@@ -95,7 +101,8 @@ fetch_storage_nodes_from_pg(server_rec *s, const char *asset_tag) {
   if(!acopy) return NULL;
   memcpy(acopy, asset_tag, strlen(asset_tag)+1);
 
-  ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Cornea: gonna go look for: %s", asset_tag);
+  ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s,
+               "Cornea: going to postgres for %s", asset_tag);
 
   params[0] = acopy;
   params[1] = strchr(params[0], '-');
@@ -122,7 +129,8 @@ fetch_storage_nodes_from_pg(server_rec *s, const char *asset_tag) {
         if(result) result = strdup(result);
       }
       else {
-        ap_log_error(APLOG_MARK, APLOG_ERR, 0, NULL, "Cornea: DB error: '%s'", PQresultErrorMessage(res));
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, NULL,
+                     "Cornea: DB error: '%s'", PQresultErrorMessage(res));
       }
       PQclear(res);
       apr_reslist_release(rl, vdbh);
@@ -143,9 +151,12 @@ fetch_storage_nodes(server_rec *s, const char *asset_tag, unsigned short *ids, i
   data = memcached_get(&h->st, asset_tag, strlen(asset_tag),
                        &len, &flags, &err);
   release_memcached_handle(h);
-  ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Cornea: cache %s", data ? "hit" : "miss");
+  ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s,
+               "Cornea: memcached %s", data ? "hit" : "miss");
   if(!data) {
-    ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, "Cornea: cache %s", memcached_strerror(&h->st, err));
+    char *errstr = memcached_strerror(&h->st, err);
+    if(errstr) ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                            "Cornea: cache %s", errstr);
     data = fetch_storage_nodes_from_pg(s, asset_tag);
     if(data) {
       h = fetch_memcached_handle();
@@ -193,32 +204,25 @@ configure_memcached(int cnt, char **ips) {
       free(old[old_n-1]);
     free(old);
     memcached_config_generation++;
-    ap_log_error(APLOG_MARK, APLOG_ERR, 0, NULL,
-                 "Cornea: reconfiguring memcached across %d nodes", memcached_server_count);
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL,
+                 "Cornea: reconfiguring memcached across %d nodes",
+                 memcached_server_count);
   }
 }
 static void *
 make_cornea_router_server_config(apr_pool_t *p, server_rec *s) {
   cornea_router_config_t *newcfg;
   newcfg = (cornea_router_config_t *) apr_pcalloc(p, sizeof(*newcfg));
+  newcfg->min = 0;
+  newcfg->smax = 1;
+  newcfg->hmax = 16;
+  newcfg->ttl = 3;
   return (void *) newcfg;
 }
 static void *
 merge_cornea_router_server_config(apr_pool_t *p, void *s1, void *s2) {
   cornea_router_config_t *newcfg;
-  newcfg = (cornea_router_config_t *) apr_pcalloc(p, sizeof(*newcfg));
-  return newcfg;
-}
-
-static void *
-make_cornea_router_dir_config(apr_pool_t *p, char *s) {
-  cornea_router_config_t *newcfg;
-  newcfg = (cornea_router_config_t *) apr_pcalloc(p, sizeof(*newcfg));
-  return (void *) newcfg;
-}
-static void *
-merge_cornea_router_dir_config(apr_pool_t *p, void *s1, void *s2) {
-  cornea_router_config_t *newcfg;
+  abort();
   newcfg = (cornea_router_config_t *) apr_pcalloc(p, sizeof(*newcfg));
   return newcfg;
 }
@@ -268,17 +272,43 @@ set_dsn_string(cmd_parms *parms, void *mconfig,
     s_cfg->dsn[i] = apr_pstrdup(parms->server->process->pconf, argv[i]);
   s_cfg->reslist = apr_pcalloc(parms->server->process->pconf, sizeof(*(s_cfg->reslist)) * argc);
   for(i=0;i<argc;i++) {
-    apr_reslist_create(&s_cfg->reslist[i], 0, 2, 16, 3,
+    apr_reslist_create(&s_cfg->reslist[i], s_cfg->min, s_cfg->smax, s_cfg->hmax, s_cfg->ttl,
                        pg_conn_con, pg_conn_des, s_cfg->dsn[i],
                        parms->server->process->pconf);
     apr_reslist_timeout_set(s_cfg->reslist[i], 2000000); /* 2 seconds */
   }
   return NULL;
 }
+static const char *
+set_dosprotect_key(cmd_parms *parms, void *mconfig, const char *val) {
+  cornea_router_config_t *s_cfg = ap_get_module_config(
+    parms->server->module_config, &cornea_router_module);
+  s_cfg->doskey = apr_pstrdup(parms->server->process->pconf, val);
+  return NULL;
+}
+static const char *
+set_params_string(cmd_parms *parms, void *mconfig,
+                  int argc, const char **argv) {
+  cornea_router_config_t *s_cfg = ap_get_module_config(
+    parms->server->module_config, &cornea_router_module);
+  if(argc != 4) return "CorneaPoolParams <min> <smax> <hmax> <ttl>";
+  s_cfg->min = atoi(argv[0]);
+  s_cfg->smax = atoi(argv[1]);
+  s_cfg->hmax = atoi(argv[2]);
+  s_cfg->ttl = atoi(argv[3]);
+  if(s_cfg->min < 0) return "<min> cannot be less than 0";
+  if(s_cfg->smax < s_cfg->min) "<smax> must be equal to or greater than <min>";
+  if(s_cfg->hmax < s_cfg->smax) "<hmax> must be equal to or greater than <smax>";
+  if(s_cfg->ttl < 0) return "<ttl> cannot be less than 0";
+  return NULL;
+}
 
 static const command_rec cornea_router_cmds[] =
 {
+  AP_INIT_TAKE1( "CorneaDoSKey", set_dosprotect_key, NULL, RSRC_CONF, "Key for DoS prevention" ),
   AP_INIT_TAKE_ARGV( "CorneaDSN", set_dsn_string, NULL, RSRC_CONF, "DSNs for postgres." ),
+  AP_INIT_TAKE_ARGV( "CorneaPoolParams", set_params_string, NULL, RSRC_CONF,
+                      "Resource pool for postgres <min> <smax> <hmax> <ttl>." ),
   {NULL}
 };
 
@@ -296,8 +326,11 @@ cornea_translate(request_rec *r) {
   char *uri_copy, *cp, *ocp, *fpcp;
   char asset_tag[32];
   char assetid[24];
-  unsigned char md5[16];
-  ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server, "Cornea: gonna go look for: %s", r->uri);
+  unsigned char md5[APR_MD5_DIGESTSIZE];
+  cornea_router_config_t *s_cfg = ap_get_module_config(
+    r->server->module_config, &cornea_router_module);
+
+  ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Cornea: gonna go look for: %s", r->uri);
   uri_copy = apr_pstrdup(r->pool, r->uri+1);
 
   /* This should be an md5 / service / ( et / ass ) / rep */
@@ -308,6 +341,7 @@ cornea_translate(request_rec *r) {
     md5[i/2] = ((md5[i/2] & 0xf) << 4) | (half_byte_val & 0xf);
   }
   if(uri_copy[32] != '/') return DECLINED;
+
   cp = uri_copy + 33;
   /* asset tag has to fit in < 32 bytes */
   if(!(strlen(cp) < 32)) return DECLINED;
@@ -345,13 +379,30 @@ cornea_translate(request_rec *r) {
   if(*cp) return DECLINED;
   *ocp = '\0';
 
+  /* enforce DoS if specified */
+  if(s_cfg->doskey) {
+    unsigned char expected[APR_MD5_DIGESTSIZE];
+    apr_md5_ctx_t ctx;
+    apr_md5_init(&ctx);
+    apr_md5_update(&ctx, s_cfg->doskey, strlen(s_cfg->doskey));
+    apr_md5_update(&ctx, asset_tag, strlen(asset_tag));
+    apr_md5_final(expected, &ctx);
+    if(memcmp(md5, expected, APR_MD5_DIGESTSIZE)) {
+      const char *referrer;
+      referrer = apr_table_get(r->headers_in, "Referer");
+      ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, r->server, "Cornea: DoS %s from %s",
+                   r->uri, referrer ? referrer : "-");
+      return HTTP_FORBIDDEN;
+    }
+  }
+
   ncnt = fetch_storage_nodes(r->server, asset_tag, ids, 16);
   if(ncnt == 0) {
     ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server, "Cornea: no nodes found for %s", asset_tag);
-    return DECLINED;
+    return HTTP_NOT_FOUND;
   }
   for(i=0; i<ncnt; i++) {
-    ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server, "Cornea: lookin' at node %d: %s", ids[i], cornea_stores[ids[i]]->ip);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Cornea: lookin' at node %d: %s", ids[i], cornea_stores[ids[i]]->ip);
     if(cornea_stores[ids[i]] &&
        (!strcmp(cornea_stores[ids[i]]->state, "open") ||
         !strcmp(cornea_stores[ids[i]]->state, "closed"))) {
@@ -362,7 +413,7 @@ cornea_translate(request_rec *r) {
       return OK;
     }
   }
-  return DECLINED;
+  return HTTP_NOT_FOUND;
 }
 
 struct cs_free_list {
@@ -473,7 +524,7 @@ cornea_child_init(apr_pool_t *p, server_rec *s) {
   apr_threadattr_t *ta;
   cornea_router_config_t *s_cfg = ap_get_module_config(
     s->module_config, &cornea_router_module);
-  ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
+  ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s,
                "Cornea: initializing storage poller for process %d", getpid());
   apr_thread_mutex_create(&memcached_mutex, 0, s->process->pool);
   apr_thread_mutex_create(&memcached_pool_mutex, 0, s->process->pool);
@@ -491,8 +542,8 @@ cornea_router_register(void) {
 
 module cornea_router_module = {
   STANDARD20_MODULE_STUFF,
-  NULL, /*make_cornea_router_dir_config,*/
-  NULL, /*merge_cornea_router_dir_config,*/
+  NULL,
+  NULL,
   make_cornea_router_server_config,
   merge_cornea_router_server_config,
   cornea_router_cmds,
