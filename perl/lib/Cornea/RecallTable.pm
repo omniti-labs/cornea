@@ -222,10 +222,10 @@ sub updateRepInfo {
     my $dsn = shift;
     my $dbh = shift;
     my $rv = shift;
-    my $sth = $dbh->prepare("select make_representation(?,?,?,?,?,?,?)");
+    my $sth = $dbh->prepare("select make_representation(?,?,?,?,?,?,?,?)");
     $sth->execute($service_id, $rep_id, $attr->{name},
                   $attr->{distance}, $attr->{count},
-                  $attr->{parent}, $attr->{class});
+                  $attr->{parent}, $attr->{parallel}, $attr->{class});
     $sth->finish();
   });
 }

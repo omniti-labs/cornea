@@ -58,6 +58,7 @@ CREATE TABLE representation (
     distance integer NOT NULL,
     replication_count integer NOT NULL,
     byproduct_of smallint,
+    parallel_transform boolean NOT NULL,
     transform_class text NOT NULL
 );
 
@@ -68,7 +69,7 @@ ALTER TABLE cornea.representation OWNER TO cornea;
 -- Name: make_representation(smallint, smallint, text, integer, integer, smallint, text); Type: FUNCTION; Schema: cornea; Owner: cornea
 --
 
-CREATE OR REPLACE FUNCTION make_representation(in_service_id smallint, in_repid smallint, in_name text, in_distance integer, in_count integer, in_parent smallint, in_transform text) RETURNS VOID
+CREATE OR REPLACE FUNCTION make_representation(in_service_id smallint, in_repid smallint, in_name text, in_distance integer, in_count integer, in_parent smallint, in_parallel boolean, in_transform text) RETURNS VOID
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -76,17 +77,17 @@ DECLARE
 BEGIN
 	SELECT * FROM representation WHERE service_id = $1 and representation_id = $2 INTO v_rep;
 	IF NOT FOUND THEN
-		INSERT INTO representation (representation_id, service_id, representation_name, distance, replication_count, byproduct_of, transform_class)
-		VALUES($2, $1, $3, $4, $5, $6, $7);
+		INSERT INTO representation (representation_id, service_id, representation_name, distance, replication_count, byproduct_of, parallel_transform, transform_class)
+		VALUES($2, $1, $3, $4, $5, $6, $7, $8);
 	ELSE
 		UPDATE representation SET
-		representation_name = $3, distance = $4, replication_count = $5, byproduct_of = $6, transform_class = $7 WHERE representation_id = $2 and service_id = $1;
+		representation_name = $3, distance = $4, replication_count = $5, byproduct_of = $6, parallel_transform = $7, transform_class = $8 WHERE representation_id = $2 and service_id = $1;
 	END IF;
 END
 $$;
 
 
-ALTER FUNCTION cornea.make_representation(in_service_id smallint, in_repid smallint, in_name text, in_distance integer, in_count integer, in_parent smallint, in_transform text) OWNER TO cornea;
+ALTER FUNCTION cornea.make_representation(in_service_id smallint, in_repid smallint, in_name text, in_distance integer, in_count integer, in_parent smallint, in_parallel boolean, in_transform text) OWNER TO cornea;
 
 --
 -- Name: get_representation(smallint, smallint); Type: FUNCTION; Schema: cornea; Owner: cornea

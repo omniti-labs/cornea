@@ -68,7 +68,7 @@ Commands:
 
 	transformation-manager
 
-	add-representation <serviceid> <repid> <name> <distance> <count> <class> [parent]
+	add-representation <serviceid> <repid> <name> <distance> <count> <parallel> <class> [parent]
 
 	submit <serviceid> <assetid> <filename>
 EOF
@@ -135,12 +135,13 @@ switch($cmd) {
     Cornea->new()->worker($conf->get('MQ::queue_transform'));
   }
   case 'add-representation' {
-    my ($service_id, $rep_id, $name, $distance, $count, $class, $parent) = @ARGV;
+    my ($service_id, $rep_id, $name, $distance, $count, $parallel, $class, $parent) = @ARGV;
     exit_msg($rt->updateRepInfo($service_id, $rep_id,
                                 { name => $name,
                                   distance => $distance,
                                   count => $count,
                                   parent => $parent,
+                                  parallel => $parallel,
                                   class => $class }));
   }
   case 'submit' {

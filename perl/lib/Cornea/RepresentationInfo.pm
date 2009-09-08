@@ -31,6 +31,7 @@ sub name { return shift->{representation_name}; }
 sub transformClass { return shift->{transform_class}; }
 sub replicationCount { return shift->{replication_count}; }
 sub distance { return shift->{distance}; }
+sub parallel { return (shift->{parallel_transform} =~ /^f(?:alse)?$/) ? 0 : 1 }
 
 sub dependents {
   my $self = shift;
